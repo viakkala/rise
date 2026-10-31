@@ -1,0 +1,21 @@
+rules_version = '2';
+
+// Rise: only the family's signed-in accounts can read or write.
+// The change history can be added to by anyone signed in, but only the admin can edit or clear it.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && request.auth.token.email == 'rise.admin@yourmail.com'; }
+
+    match /households/main/items/{key} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      allow update, delete: if isAdmin() || (signedIn() && !key.matches('changes__.*'));
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

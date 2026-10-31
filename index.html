@@ -1,0 +1,2338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Rise">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <title>Rise</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --surface: #182238;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-soft: #cbd5e1;
+      --accent-online: #3b82f6;
+      --accent-offline: #10b981;
+      --accent-metime: #ec4899;
+      --accent-admin: #8b5cf6;
+      --accent-family: #06b6d4;
+      --accent-warn: #f59e0b;
+      --danger: #ef4444;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding-bottom: calc(40px + env(safe-area-inset-bottom));
+      -webkit-tap-highlight-color: transparent;
+    }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible {
+      outline: 2px solid var(--accent-online); outline-offset: 2px;
+    }
+
+    header {
+      background: #182238;
+      padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .brand { font-weight: 700; font-size: 1.05rem; color: #fff; white-space: nowrap; }
+    .view-toggle-group { display: flex; background: var(--bg); border-radius: 8px; padding: 3px; gap: 4px; }
+    .btn-toggle {
+      border: none; padding: 7px 12px; font-size: 0.8rem; font-weight: 600;
+      border-radius: 6px; color: var(--text-muted); background: transparent;
+    }
+    .btn-toggle.active-user { background: var(--accent-online); color: #fff; }
+    .btn-toggle.active-admin { background: var(--accent-admin); color: #fff; }
+
+    .container { max-width: 600px; margin: 0 auto; padding: 16px; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .card h3 { margin-bottom: 12px; font-size: 1rem; }
+    .muted { color: var(--text-muted); font-size: 0.85rem; }
+    .small { font-size: 0.75rem; }
+
+    .banner { background: #7c2d12; color: #fed7aa; border-radius: 8px; padding: 10px 12px; font-size: 0.85rem; margin-bottom: 12px; display: none; }
+    .banner.show { display: block; }
+
+    .summary-strip { display: flex; gap: 8px; margin-bottom: 16px; }
+    .stat { flex: 1; background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px; text-align: center; min-width: 0; }
+    .stat-value { font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .stat-label { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+    .stat.metime .stat-value { color: var(--accent-metime); }
+
+    .context-switcher { display: flex; gap: 8px; margin-bottom: 16px; }
+    .btn-context {
+      flex: 1; padding: 10px; border: 1px solid var(--border); background: var(--bg);
+      color: var(--text-muted); font-weight: 600; border-radius: 8px;
+    }
+    .btn-context.active[data-context="online"] { background: var(--accent-online); color: #fff; border-color: var(--accent-online); }
+    .btn-context.active[data-context="offline"] { background: var(--accent-offline); color: #fff; border-color: var(--accent-offline); }
+    .count-pill { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 4px; border-radius: 10px; background: rgba(0,0,0,0.25); font-size: 0.75rem; }
+
+    .task-item {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;
+    }
+    .task-item.metime { border-left: 4px solid var(--accent-metime); }
+    .task-item.done { opacity: 0.7; }
+    .task-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .task-title { font-weight: 600; font-size: 1rem; overflow-wrap: anywhere; }
+    .task-item.done .task-title { text-decoration: line-through; color: var(--text-muted); }
+    .badges { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; flex-shrink: 0; }
+    .badge { padding: 2px 6px; border-radius: 4px; background: #334155; font-size: 0.7rem; white-space: nowrap; }
+    .badge-metime { background: var(--accent-metime); color: #fff; }
+    .badge-partial { background: var(--accent-warn); color: #111827; }
+    .badge-carried { background: transparent; border: 1px solid var(--accent-warn); color: var(--accent-warn); }
+    .badge-done { background: var(--accent-offline); color: #fff; }
+    .badge-family { background: rgba(6, 182, 212, 0.15); border: 1px solid var(--accent-family); color: #67e8f9; }
+    .task-item.pinned { border-color: var(--accent-family); box-shadow: inset 0 0 0 1px var(--accent-family); }
+    .pin-note { font-size: 0.75rem; color: #67e8f9; font-weight: 600; }
+    .btn-plan { background: var(--accent-family); color: #0f172a; }
+    .task-meta { font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+    .timer-live { color: var(--accent-warn); font-weight: 700; }
+
+    .subtask-container { background: var(--surface); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; gap: 2px; }
+    .subtask-row { display: flex; align-items: center; gap: 4px; font-size: 0.875rem; color: var(--text-soft); }
+    .subtask-row label { flex: 1; display: flex; align-items: center; gap: 10px; padding: 6px 4px; cursor: pointer; min-width: 0; }
+    .subtask-row label span { overflow-wrap: anywhere; }
+    .subtask-row input[type="checkbox"] { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--accent-offline); }
+    .subtask-row.done span { text-decoration: line-through; color: var(--text-muted); }
+    .btn-icon { background: transparent; border: none; color: var(--text-muted); font-size: 1rem; width: 32px; height: 32px; border-radius: 6px; flex-shrink: 0; }
+    .btn-icon:hover { background: #334155; color: #fff; }
+
+    .steps-toggle { align-self: flex-start; background: transparent; border: none; color: var(--text-muted); font-size: 0.8rem; font-weight: 600; padding: 2px 0; }
+    .steps-toggle:hover { color: #fff; }
+    .choice-row { display: flex; gap: 6px; margin: 4px 0 14px; }
+    .choice-row label { flex: 1; margin: 0 !important; }
+    .choice-row input { position: absolute; opacity: 0; pointer-events: none; }
+    .choice-row span { display: block; text-align: center; padding: 10px 4px; border: 1px solid var(--border); border-radius: 8px; color: var(--text-soft); font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+    .choice-row span small { display: block; font-weight: 400; color: var(--text-muted); font-size: 0.7rem; margin-top: 2px; }
+    .choice-row input:checked + span { background: var(--accent-warn); border-color: var(--accent-warn); color: #111827; }
+    .choice-row input:checked + span small { color: #111827; }
+    .choice-row input:focus-visible + span { outline: 2px solid var(--accent-online); outline-offset: 2px; }
+    .progress-bar-bg { background: #334155; height: 6px; border-radius: 3px; width: 100%; overflow: hidden; }
+    .progress-bar-fill { background: var(--accent-offline); height: 100%; width: 0%; transition: width 0.3s ease; }
+    .metime .progress-bar-fill { background: var(--accent-metime); }
+
+    .task-actions { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+    .btn-action, .btn {
+      flex: 1; min-width: 72px; padding: 9px 8px; border: none; border-radius: 6px;
+      font-weight: 600; font-size: 0.8rem;
+    }
+    .btn { flex: 0 0 auto; padding: 9px 14px; }
+    .btn-pause { background: var(--accent-warn); color: #111827; }
+    .btn-done, .btn-success { background: var(--accent-offline); color: #fff; }
+    .btn-subtask, .btn-secondary { background: #334155; color: var(--text-soft); }
+    .btn-timer { background: transparent; border: 1px solid var(--accent-online); color: #93c5fd; }
+    .btn-timer.running { background: var(--accent-online); color: #fff; }
+    .btn-primary { background: var(--accent-admin); color: #fff; }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    details.completed { margin-top: 4px; }
+    details.completed summary { cursor: pointer; color: var(--text-muted); font-size: 0.85rem; padding: 6px 0; list-style: none; }
+    details.completed summary::-webkit-details-marker { display: none; }
+    details.completed summary::before { content: "▸ "; }
+    details.completed[open] summary::before { content: "▾ "; }
+
+    .why-card { background: linear-gradient(135deg, rgba(6,182,212,0.12), rgba(236,72,153,0.10)); border: 1px solid #155e75; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+    .why-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .why-title { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #67e8f9; }
+    .why-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .why-list li { font-size: 0.95rem; line-height: 1.4; color: var(--text); padding-left: 22px; position: relative; }
+    .why-list li::before { content: "✦"; position: absolute; left: 0; color: var(--accent-metime); }
+    .why-task { background: none; border: none; padding: 0; text-align: left; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #f9a8d4; }
+    .why-list.task li::before { content: "➜"; color: #67e8f9; }
+    .why-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 0.72rem; color: var(--text-muted); }
+    .btn-link { background: none; border: none; color: #67e8f9; font-weight: 600; font-size: 0.8rem; padding: 4px 0; }
+    .metime-nudge { border: 1px dashed var(--accent-metime); border-radius: 8px; padding: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .metime-nudge p { font-size: 0.85rem; color: var(--text-soft); }
+    .btn-metime { background: var(--accent-metime); color: #fff; }
+
+    .radar-wrap { text-align: center; }
+    .radar-wrap svg { width: 100%; max-width: 400px; height: auto; }
+    .legend { display: flex; justify-content: center; gap: 16px; font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; flex-wrap: wrap; }
+    .legend i { display: inline-block; width: 12px; height: 3px; vertical-align: middle; margin-right: 5px; border-radius: 2px; }
+
+    /* Admin */
+    .admin-tabs { display: flex; gap: 4px; background: var(--bg); padding: 3px; border-radius: 8px; margin-bottom: 16px; overflow-x: auto; }
+    .admin-tab { flex: 1; border: none; background: transparent; color: var(--text-muted); padding: 8px 10px; border-radius: 6px; font-weight: 600; font-size: 0.8rem; white-space: nowrap; }
+    .admin-tab.active { background: var(--accent-admin); color: #fff; }
+    .day-chips { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; padding-bottom: 2px; }
+    .day-chip { border: 1px solid var(--border); background: var(--bg); color: var(--text-muted); border-radius: 16px; padding: 6px 10px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+    .day-chip.active { border-color: var(--accent-admin); color: #fff; background: rgba(139, 92, 246, 0.25); }
+    .day-chip.today::after { content: " •"; color: var(--accent-offline); }
+    .list-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .list-row:last-child { border-bottom: none; }
+    .list-row .grow { flex: 1; min-width: 0; }
+    .list-row .title { font-weight: 600; font-size: 0.9rem; overflow-wrap: anywhere; }
+    .list-row .sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    .dot.online { background: var(--accent-online); }
+    .dot.offline { background: var(--accent-offline); }
+    .warn-note { font-size: 0.8rem; color: var(--accent-metime); margin: 8px 0; }
+    .table-wrap { overflow-x: auto; margin: 0 -4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+    th, td { padding: 7px 4px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    th { color: var(--text-muted); font-weight: 600; }
+    td.num, th.num { text-align: right; }
+    td.wrap { white-space: normal; min-width: 120px; width: 100%; }
+    td { vertical-align: top; }
+    .over { color: #fca5a5; }
+    .under { color: #6ee7b7; }
+    .setting-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .setting-row:last-child { border-bottom: none; }
+    .switch { width: 22px; height: 22px; accent-color: var(--accent-admin); }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75);
+      display: none; align-items: center; justify-content: center; z-index: 1000; padding: 16px;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; width: 100%; max-width: 420px; padding: 20px; max-height: 90vh; overflow-y: auto; }
+    .modal h3 { margin-bottom: 12px; }
+    .modal label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px; }
+    .input-field, .modal input:not([type="checkbox"]), .modal select, .modal textarea {
+      width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--bg); color: #fff; margin-top: 4px; font-size: 16px; /* 16px stops iOS zoom-on-focus */
+    }
+    .modal .row2 { display: flex; gap: 8px; }
+    .modal .row2 > label { flex: 1; min-width: 0; }
+    .modal .check-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+    .modal .check-grid label { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text-soft); }
+    .modal-msg { font-size: 0.9rem; color: var(--text-soft); margin-bottom: 12px; line-height: 1.4; }
+    .modal-error { color: #fca5a5; font-size: 0.8rem; min-height: 1em; margin-bottom: 8px; }
+    .modal-actions { display: flex; gap: 8px; }
+    .modal-actions .btn { flex: 1; }
+    .modal-actions .modal-extra { flex: 0 0 auto; }
+
+    .tasks-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .tasks-head h3 { margin: 0; }
+    .tasks-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+    .btn-add { background: var(--accent-online); color: #fff; }
+    .btn-edit { background: transparent; border: none; color: var(--text-muted); width: 30px; height: 30px; border-radius: 6px; font-size: 0.95rem; flex-shrink: 0; margin: -4px -6px 0 0; }
+    .btn-edit:hover { background: #334155; color: #fff; }
+    .label-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .label-row input[type="text"] { flex: 1; margin-top: 0 !important; }
+    .label-row .del-check { display: flex; align-items: center; gap: 4px; margin: 0; font-size: 0.8rem; color: var(--text-soft); white-space: nowrap; }
+    .label-row .del-check input { width: 18px; height: 18px; accent-color: var(--danger); }
+    .modal-extra { margin-right: auto; }
+    .who { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; }
+    .who.user { background: rgba(59,130,246,0.2); color: #93c5fd; }
+    .who.admin { background: rgba(139,92,246,0.25); color: #c4b5fd; }
+    .tab-count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: var(--danger); color: #fff; font-size: 0.7rem; }
+    .sync-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 8px; vertical-align: 2px; background: #475569; }
+    .sync-dot.ok { background: var(--accent-offline); }
+    .sync-dot.syncing { background: var(--accent-online); animation: pulse 1s infinite alternate; }
+    .sync-dot.offline { background: #64748b; }
+    .sync-dot.error { background: var(--danger); }
+    @keyframes pulse { from { opacity: 1; } to { opacity: 0.3; } }
+    .sync-line { font-size: 0.72rem; color: var(--text-muted); }
+    #login { position: fixed; inset: 0; z-index: 1500; background: var(--bg); display: none; align-items: center; justify-content: center; padding: 24px 16px; overflow-y: auto; }
+    #login.show { display: flex; }
+    .login-box { width: 100%; max-width: 360px; text-align: center; }
+    .login-box img { width: 88px; height: 88px; border-radius: 22px; margin-bottom: 14px; }
+    .login-box h1 { font-size: 1.6rem; margin-bottom: 4px; }
+    .login-box p { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px; }
+    .login-box label { display: block; text-align: left; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px; }
+    .login-box input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: #fff; margin-top: 4px; font-size: 16px; }
+    .login-box .btn { width: 100%; padding: 12px; font-size: 0.95rem; margin-top: 4px; }
+    .login-err { color: #fca5a5; font-size: 0.85rem; min-height: 1.2em; margin: 4px 0 8px; }
+    .toast {
+      position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
+      background: #f8fafc; color: #0f172a; padding: 10px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;
+      opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; z-index: 2000; max-width: calc(100% - 32px); text-align: center;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand"><img src="icon-192.png" alt="" width="26" height="26" style="vertical-align: -7px; border-radius: 7px; margin-right: 8px;">Rise<span class="sync-dot hidden" id="sync-dot" title="Sync"></span></div>
+    <div class="view-toggle-group">
+      <button class="btn-toggle active-user" id="nav-user-btn" type="button">Focus View</button>
+      <button class="btn-toggle" id="nav-admin-btn" type="button">Admin Panel</button>
+    </div>
+  </header>
+
+  <!-- USER FOCUS VIEW -->
+  <main id="user-view" class="container">
+    <div class="banner" id="storage-banner">Saving is unavailable in this browser mode (private window or blocked storage). Changes will be lost when you close the app.</div>
+
+    <section class="why-card" id="why-card" aria-live="polite"></section>
+
+    <div class="summary-strip" id="summary-strip"></div>
+
+    <div class="context-switcher">
+      <button class="btn-context active" data-context="online" id="btn-online" type="button">🌐 Online</button>
+      <button class="btn-context" data-context="offline" id="btn-offline" type="button">🏡 Offline</button>
+    </div>
+
+    <div class="card">
+      <div class="tasks-head"><h3 id="tasks-heading">Today's Tasks</h3><button class="btn btn-add" type="button" data-action="user-add-task">+ Add task</button></div>
+      <div id="metime-nudge"></div>
+      <div id="task-list-container"></div>
+      <div class="tasks-foot"><button class="btn-link" type="button" data-action="user-labels">🏷 Manage labels</button><span class="sync-line" id="sync-line"></span></div>
+    </div>
+
+    <div class="card">
+      <h3>Focus &amp; Category Mastery</h3>
+      <div class="radar-wrap" id="radar"></div>
+      <div class="legend">
+        <span><i style="background: var(--accent-online);"></i>Progress today</span>
+        <span><i style="background: var(--accent-metime);"></i>Time share, last 7 days</span>
+      </div>
+    </div>
+  </main>
+
+  <!-- ADMIN VIEW -->
+  <main id="admin-view" class="container" style="display: none;">
+    <div class="card" style="border-color: var(--accent-admin);">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+        <div>
+          <h2 style="color: var(--accent-admin); font-size: 1.15rem;">Admin Master Control</h2>
+          <p class="muted" style="margin-top: 4px;">Routines, today's plan and your private habit log.</p>
+        </div>
+        <button class="btn btn-secondary" type="button" data-action="exit-admin">Lock</button>
+      </div>
+    </div>
+    <div class="admin-tabs" id="admin-tabs">
+      <button class="admin-tab active" data-tab="today" type="button">Today</button>
+      <button class="admin-tab" data-tab="template" type="button">Weekly</button>
+      <button class="admin-tab" data-tab="analytics" type="button">Analytics</button>
+      <button class="admin-tab" data-tab="changes" type="button">Changes</button>
+      <button class="admin-tab" data-tab="settings" type="button">Settings</button>
+    </div>
+    <div id="admin-content"></div>
+  </main>
+
+  <!-- Generic modal -->
+  <div class="modal-overlay" id="modal" aria-hidden="true">
+    <form class="modal" id="modal-form" role="dialog" aria-modal="true" aria-labelledby="modal-title" novalidate>
+      <h3 id="modal-title"></h3>
+      <div id="modal-body"></div>
+      <div class="modal-error" id="modal-error" role="alert"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-danger modal-extra hidden" id="modal-extra">Delete</button>
+        <button type="submit" class="btn btn-primary" id="modal-confirm">Save</button>
+        <button type="button" class="btn btn-secondary" id="modal-cancel">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Sign-in (shown once per phone when cloud sync is set up) -->
+  <div id="login" role="dialog" aria-modal="true" aria-labelledby="login-title">
+    <form class="login-box" id="login-form" novalidate>
+      <img src="icon-192.png" alt="">
+      <h1 id="login-title">Rise</h1>
+      <p>Sign in once on this phone to keep tasks in sync between the family's phones.</p>
+      <label>Email<input name="email" type="email" autocomplete="username" required></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <div class="login-err" id="login-err" role="alert"></div>
+      <button class="btn btn-add" type="submit" id="login-btn">Sign in</button>
+      <button class="btn-link" type="button" id="login-local" style="margin-top: 16px;">Use on this device only (no sync)</button>
+    </form>
+  </div>
+
+  <input type="file" id="import-file" accept="application/json,.json" class="hidden">
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    // ---------- Constants & helpers ----------
+    var STORAGE_KEY = 'focusPwa.state.v1';
+    var ME_TIME = 'Me Time';
+    var WEEK = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    var JS_DAY = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    var DAY_NAMES = { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' };
+    var MAX_LOG = 3000;
+    var CATS = [ME_TIME, 'Self-care', 'Family', 'Home', 'Deep Work'];
+    // Old category names folded into the new set.
+    var CAT_MIGRATE = { 'Laundry': 'Home', 'Cleaning': 'Home', 'Purchasing': 'Home', 'Kids': 'Family' };
+    function addDays(key, n) { var p = key.split('-'); var d = new Date(+p[0], +p[1] - 1, +p[2]); d.setDate(d.getDate() + n); return dateKey(d); }
+    function prettyDate(key) { var p = key.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' }); }
+
+    function $(id) { return document.getElementById(id); }
+    function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    // Local calendar date (toISOString() would use UTC and flip days early/late for IST users).
+    function dateKey(d) { d = d || new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+    function daysAgoKey(n) { var d = new Date(); d.setDate(d.getDate() - n); return dateKey(d); }
+    function todayDayId() { return JS_DAY[new Date().getDay()]; }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function clampInt(v, min, max, def) {
+      var n = parseInt(v, 10);
+      if (isNaN(n)) return def;
+      return Math.min(max, Math.max(min, n));
+    }
+    function str(v, max) { return typeof v === 'string' ? v.trim().slice(0, max || 120) : ''; }
+    function fmtMins(m) {
+      m = Math.round(m || 0);
+      if (m < 60) return m + 'm';
+      return Math.floor(m / 60) + 'h ' + pad(m % 60) + 'm';
+    }
+    function fmtClock(ms) {
+      var s = Math.max(0, Math.floor(ms / 1000));
+      var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      return (h ? h + ':' + pad(m) : m) + ':' + pad(sec);
+    }
+
+    // ---------- Why not doomscroll ----------
+    // Shipped with the app (works offline). Shown one or two at a time, cycling through all before repeating.
+    var BENEFITS = [
+      'Your attention is yours again. You decide what fills the next ten minutes, not a feed.',
+      'Small tasks finished today add up to a calmer week.',
+      'Fewer comparisons with other people\'s highlight reels, and more appreciation for your own day.',
+      'Your kids notice when you\'re fully there. Phone-free time with them is the kind they remember.',
+      'Less late-night scrolling usually means falling asleep sooner and waking up clearer.',
+      'Your eyes and neck get a break from looking down at a bright screen.',
+      'Boredom is where ideas show up. Leave a little room for it.',
+      'Ten minutes not scrolling is ten minutes for a walk, a stretch or a glass of water.',
+      'You stop handing your mood to an algorithm built to keep you watching.',
+      'Finishing one real thing feels better than skimming a hundred posts.',
+      'Deep work needs long, unbroken stretches. Every scroll you skip protects one.',
+      'Conversations at home get longer and better when nobody is half-looking at a screen.',
+      'You\'ll read more of what you chose to read, and less of what was pushed at you.',
+      'Less outrage and bad news on loop means a quieter, steadier mind.',
+      'Your weekend plans actually happen when the evening isn\'t lost to the feed.',
+      'Habits are votes for the person you\'re becoming. This one counts.',
+      'You get to notice the small stuff: the light outside, the tea, the kids\' jokes.',
+      'Your thumb gets a day off. Your focus gets a day on.',
+      'Fewer impulse purchases from ads you never meant to see.',
+      'Teaching the kids goes better when you aren\'t mentally still on your phone.',
+      'Waiting, queueing and pausing become moments to breathe instead of to scroll.',
+      'You remember more of your day when it isn\'t chopped into tiny pieces.',
+      'Your Me Time is real rest you chose, not a scroll that leaves you more tired.',
+      'Doing something with your hands, like folding, cooking or drawing, is calming in a way the feed never is.',
+      'The urge to check fades the longer you don\'t feed it.',
+      'You set an example: kids copy what we do with our phones far more than what we say.',
+      'Planning tomorrow tonight is a gift to your future self. Scrolling tonight is a loan from it.',
+      'More time outdoors and moving, less time frozen in one position.',
+      'Your best ideas need quiet to surface. The feed is never quiet.',
+      'Every time you put the phone down, it gets a little easier next time.',
+      'You\'re less likely to lose an hour you didn\'t mean to spend.',
+      'Real connection beats likes: a call or a visit fills the cup that a feed only promises to.',
+      'A clearer head makes everyday decisions easier, from meals to money.',
+      'Getting through your own list feels good. That feeling is yours, not the app\'s.',
+      'Mornings without the feed start on your terms.',
+      'You\'ll notice when you\'re actually hungry, tired or bored, instead of scrolling past it.',
+      'Family weekends feel longer when they aren\'t split between people and screens.',
+      'You protect your peace from strangers\' opinions.',
+      'Partial progress is still progress. You\'re doing better than the feed would ever tell you.',
+      'Fewer notifications, fewer interruptions, more flow.',
+      'The time you take back today is time you can give to people you love.',
+      'You get bored less over time, because your brain relearns how to enjoy slower things.'
+    ];
+
+    // Why each task is worth doing. Matched by task title (or the part before ':' for planned follow-ups),
+    // then by category. A task's own "why it helps" lines (set in Admin) take priority.
+    var TASK_WHYS = {
+      "plan tomorrow's breakfast": [
+        'Mornings with the kids are hectic. Deciding breakfast tonight means one less decision when everyone is rushing.',
+        'Soak, thaw or prep tonight and breakfast is half done before you wake up.',
+        'A planned breakfast is more likely to be a good one than whatever is quickest at 7am.'
+      ],
+      "plan tomorrow's lunch": [
+        'Knowing lunch in advance avoids the midday scramble and last-minute ordering in.',
+        'You can prep lunch ingredients alongside dinner tonight and save time tomorrow.',
+        'Planned lunches tend to be healthier and cheaper than takeaway.'
+      ],
+      "plan tomorrow's dinner": [
+        'If your spouse\'s evening suddenly gets busy, a dinner that\'s already decided keeps the evening calm.',
+        'Evenings are when energy is lowest. Deciding dinner a day ahead takes the hardest decision off the table.',
+        'Planning early leaves time to check the fridge and shop, instead of a late dash.'
+      ],
+      'breakfast': ['A calm, planned breakfast sets the tone for the whole family\'s morning.', 'Everything is already decided. Just follow the plan.'],
+      'lunch': ['A proper lunch keeps your energy steady through the afternoon.', 'The thinking was done yesterday. Now it\'s just doing.'],
+      'dinner': ['Dinner is sorted even if the evening gets busy for your spouse.', 'A planned dinner means less stress and more time at the table together.'],
+      "plan tomorrow's play with the kids": [
+        'With a plan ready, play time starts straight away instead of "so, what should we do?"',
+        'Kids love having something to look forward to. Tell them tomorrow\'s plan tonight.',
+        'Planning ahead lets you gather what you need, like paper, blocks or a ball, before it\'s time.'
+      ],
+      'play with the kids': ['Undivided play time is when kids feel most connected to you.', 'Kids remember the times you were fully there, not the times you were on your phone.'],
+      'teach the kids': ['A little teaching every day adds up to real confidence for them.', 'Kids learn as much from your patience as from the lesson itself.'],
+      'plan the weekend with family': [
+        'Weekends without a plan tend to drift into screens. A plan turns them into time together.',
+        'Planning on Thursday gives everyone something to look forward to.',
+        'Booking, shopping or calling ahead is easy when the plan is made early.'
+      ],
+      'face wash': ['A two-minute routine that signals a fresh start (or a proper end) to the day.'],
+      'walk outside, no phone': ['A short walk lifts your mood, clears your head and helps you sleep better.', 'Fresh air and movement do more for a restless mind than any feed.'],
+      'films, shows or browsing': ['Rest you choose, for a set time, recharges you without guilt or an endless scroll.', 'Guaranteed Me Time is what makes the rest of the plan sustainable.'],
+      'read for personal growth': ['Reading trains the focus that scrolling wears down.', 'Twenty pages a day is a dozen books a year.'],
+      'deep work block': ['One protected block moves important work further than a day of interruptions.'],
+      'fold & store laundry': ['Folded, put-away clothes mean calmer mornings, with no hunting for socks while the kids wait.'],
+      'tidy one area': ['A clear space is easier to relax in, and it takes less time than it feels like.'],
+      'smart purchasing: evaluate items': ['Thinking before buying avoids impulse spends and returns.']
+    };
+    var CATEGORY_WHYS = {
+      'Me Time': ['Real rest you chose makes it easier to stay off the feed the rest of the day.'],
+      'Self-care': ['Looking after yourself is what keeps you steady for everyone else.'],
+      'Family': ['Time and attention are the things your family remembers most.', 'Small, planned moments together add up to a close family.'],
+      'Home': ['A home that runs smoothly gives the whole family calmer days.'],
+      'Deep Work': ['Focused work done means evenings free for family, without guilt.']
+    };
+    function whysFor(t) {
+      if (t.whys && t.whys.length) return t.whys;
+      var key = t.title.toLowerCase();
+      if (TASK_WHYS[key]) return TASK_WHYS[key];
+      var prefix = key.split(':')[0].trim();
+      if (TASK_WHYS[prefix]) return TASK_WHYS[prefix];
+      return CATEGORY_WHYS[t.category] || [];
+    }
+
+    // ---------- Default data ----------
+    // kind: 'normal' | 'plan' (Done asks for a plan; tomorrow's follow-up carries it) | 'weekend' (family weekend plan, can't be skipped)
+    function tpl(title, context, category, est, subs, extra) {
+      var t = { id: uid(), title: title, context: context, category: category, est: est, subtasks: subs || [], kind: 'normal', followTitle: '', followEst: 30, whys: [] };
+      if (extra) { t.kind = extra.kind || 'normal'; t.followTitle = extra.followTitle || ''; t.followEst = extra.followEst || 30; }
+      return t;
+    }
+    // Evening-before meal planning; tomorrow gets "Breakfast: <plan>" etc. (only when you plan something).
+    function mealPlanTemplates() {
+      return [
+        tpl("Plan tomorrow's breakfast", 'offline', 'Home', 5, [], { kind: 'plan', followTitle: 'Breakfast', followEst: 20 }),
+        tpl("Plan tomorrow's lunch", 'offline', 'Home', 5, [], { kind: 'plan', followTitle: 'Lunch', followEst: 30 }),
+        tpl("Plan tomorrow's dinner", 'offline', 'Home', 5, [], { kind: 'plan', followTitle: 'Dinner', followEst: 40 })
+      ];
+    }
+    function defaultTemplates() {
+      var t = {};
+      WEEK.forEach(function (day) {
+        var weekend = day === 'sat' || day === 'sun';
+        var list = [
+          tpl('Face wash', 'offline', 'Self-care', 5),
+          tpl('Walk outside, no phone', 'offline', 'Self-care', 20),
+          tpl('Films, shows or browsing', 'online', ME_TIME, weekend ? 60 : 45),
+          tpl('Play with the kids', 'offline', 'Family', 30),
+          tpl("Plan tomorrow's play with the kids", 'offline', 'Family', 5, [], { kind: 'plan', followTitle: 'Play with the kids' })
+        ].concat(mealPlanTemplates());
+        if (!weekend) {
+          list.push(tpl('Teach the kids', 'offline', 'Family', 30));
+          list.push(tpl('Deep work block', 'online', 'Deep Work', 45));
+        }
+        if (day === 'mon' || day === 'wed' || day === 'fri' || day === 'sun') list.push(tpl('Read for personal growth', 'online', 'Self-care', 20));
+        if (day === 'mon' || day === 'thu') list.push(tpl('Fold & store laundry', 'offline', 'Home', 25, ['Fold T-shirts & tops', 'Sort socks & innerwear', 'Fold trousers & jeans', 'Put away in drawers']));
+        if (day === 'tue' || day === 'fri' || day === 'sun') list.push(tpl('Tidy one area', 'offline', 'Home', 20, ['Clear surfaces', 'Wipe down', 'Take out trash']));
+        if (day === 'wed' || day === 'sat') list.push(tpl('Smart purchasing: evaluate items', 'online', 'Home', 15));
+        if (day === 'thu') list.push(tpl('Plan the weekend with family', 'offline', 'Family', 15, [], { kind: 'weekend' }));
+        t[day] = list;
+      });
+      return t;
+    }
+    function defaultState() {
+      return {
+        version: 3,
+        pin: '1234',
+        settings: { carryOver: true },
+        categories: CATS.slice(),
+        templates: defaultTemplates(),
+        tasks: [],
+        scheduled: [],
+        log: [],
+        lastSeedDate: null,
+        why: { bag: [], current: [], seen: 0, taskId: null, taskText: '' }
+      };
+    }
+
+    // ---------- Normalisation (protects against corrupt storage & bad imports) ----------
+    function normSubTitles(arr) {
+      return (Array.isArray(arr) ? arr : []).map(function (s) { return str(typeof s === 'string' ? s : s && s.title, 120); }).filter(Boolean).slice(0, 30);
+    }
+    function normTpl(t) {
+      if (!t || typeof t !== 'object' || !str(t.title)) return null;
+      return {
+        id: str(t.id, 40) || uid(),
+        title: str(t.title, 80),
+        context: t.context === 'offline' ? 'offline' : 'online',
+        category: str(t.category, 40) || ME_TIME,
+        est: clampInt(t.est, 1, 600, 15),
+        subtasks: normSubTitles(t.subtasks),
+        kind: t.kind === 'plan' || t.kind === 'weekend' ? t.kind : 'normal',
+        followTitle: str(t.followTitle, 60),
+        followEst: clampInt(t.followEst, 1, 600, 30),
+        whys: (Array.isArray(t.whys) ? t.whys.map(function (w) { return str(w, 200); }).filter(Boolean).slice(0, 5) : [])
+      };
+    }
+    function normTask(t) {
+      if (!t || typeof t !== 'object' || !str(t.title)) return null;
+      var status = ['active', 'partial', 'done'].indexOf(t.status) >= 0 ? t.status : 'active';
+      return {
+        id: str(String(t.id || ''), 40) || uid(),
+        templateId: t.templateId ? str(String(t.templateId), 40) : null,
+        title: str(t.title, 80),
+        context: t.context === 'offline' ? 'offline' : 'online',
+        category: str(t.category, 40) || ME_TIME,
+        est: clampInt(t.est, 1, 600, 15),
+        timeSpent: clampInt(t.timeSpent, 0, 100000, 0),
+        progress: clampInt(t.progress, 0, 100, 0),
+        preDoneProgress: typeof t.preDoneProgress === 'number' ? clampInt(t.preDoneProgress, 0, 100, 0) : null,
+        status: status,
+        carried: !!t.carried,
+        runningSince: typeof t.runningSince === 'number' && t.runningSince > 0 ? t.runningSince : null,
+        lastDoneLogId: t.lastDoneLogId ? String(t.lastDoneLogId) : null,
+        preDoneSubs: Array.isArray(t.preDoneSubs) ? t.preDoneSubs.map(String).slice(0, 30) : null,
+        kind: t.kind === 'plan' || t.kind === 'weekend' ? t.kind : 'normal',
+        followTitle: str(t.followTitle, 60),
+        whys: (Array.isArray(t.whys) ? t.whys.map(function (w) { return str(w, 200); }).filter(Boolean).slice(0, 5) : []),
+        date: /^\d{4}-\d{2}-\d{2}$/.test(t.date) ? t.date : null,
+        tag: str(t.tag, 30),
+        replaces: t.replaces ? str(t.replaces, 80) : null,
+        createdIds: Array.isArray(t.createdIds) ? t.createdIds.map(String).slice(0, 40) : [],
+        restore: t.restore && typeof t.restore === 'object' && str(t.restore.title) ? {
+          templateId: t.restore.templateId ? String(t.restore.templateId) : null, title: str(t.restore.title, 80),
+          context: t.restore.context === 'online' ? 'online' : 'offline', category: str(t.restore.category, 40) || 'Family', est: clampInt(t.restore.est, 1, 600, 30)
+        } : null,
+        subtasks: (Array.isArray(t.subtasks) ? t.subtasks : []).filter(function (s) { return s && str(s.title); }).slice(0, 30).map(function (s) {
+          return { id: str(String(s.id || ''), 40) || uid(), title: str(s.title, 120), done: !!s.done };
+        })
+      };
+    }
+    function normLog(e) {
+      if (!e || typeof e !== 'object' || !str(e.title)) return null;
+      return {
+        id: str(String(e.id || ''), 40) || uid(),
+        date: /^\d{4}-\d{2}-\d{2}$/.test(e.date) ? e.date : dateKey(),
+        ts: typeof e.ts === 'number' ? e.ts : Date.now(),
+        taskId: e.taskId ? String(e.taskId) : '',
+        title: str(e.title, 80),
+        category: str(e.category, 40) || ME_TIME,
+        context: e.context === 'offline' ? 'offline' : 'online',
+        event: e.event === 'done' ? 'done' : 'partial',
+        sessionMins: clampInt(e.sessionMins, 0, 100000, 0),
+        totalMins: clampInt(e.totalMins, 0, 100000, 0),
+        est: clampInt(e.est, 1, 600, 15),
+        subDone: clampInt(e.subDone, 0, 100, 0),
+        subTotal: clampInt(e.subTotal, 0, 100, 0),
+        progress: clampInt(e.progress, 0, 100, 0),
+        note: str(e.note, 200)
+      };
+    }
+    function normalize(raw) {
+      var d = defaultState();
+      if (!raw || typeof raw !== 'object') return d;
+      var oldVersion = typeof raw.version === 'number' ? raw.version : 1;
+      var s = { version: 3 };
+      s.pin = typeof raw.pin === 'string' && /^\d{4,8}$/.test(raw.pin) ? raw.pin : d.pin;
+      s.settings = { carryOver: raw.settings && typeof raw.settings.carryOver === 'boolean' ? raw.settings.carryOver : true };
+      var cats = Array.isArray(raw.categories) ? raw.categories.map(function (c) { c = str(c, 40); return CAT_MIGRATE[c] || c; }).filter(Boolean) : [];
+      if (oldVersion < 2) cats = CATS.concat(cats); // new standard set first, keep any custom extras
+      cats = cats.filter(function (c, i) { return cats.indexOf(c) === i; }).slice(0, 10);
+      if (cats.length < 3) cats = d.categories;
+      if (cats.indexOf(ME_TIME) < 0) cats.unshift(ME_TIME);
+      s.categories = cats;
+      s.templates = {};
+      WEEK.forEach(function (day) {
+        var src = raw.templates && raw.templates[day];
+        s.templates[day] = oldVersion < 2 || !Array.isArray(src) ? d.templates[day] : src.map(normTpl).filter(Boolean);
+      });
+      s.tasks = Array.isArray(raw.tasks) ? raw.tasks.map(normTask).filter(Boolean) : [];
+      s.scheduled = Array.isArray(raw.scheduled) ? raw.scheduled.map(function (sc) {
+        if (!sc || !/^\d{4}-\d{2}-\d{2}$/.test(sc.date)) return null;
+        var task = normTask(sc.task);
+        return task ? { id: task.id, date: sc.date, task: task } : null;
+      }).filter(Boolean).slice(0, 100) : [];
+      s.log = Array.isArray(raw.log) ? raw.log.map(normLog).filter(Boolean).slice(-MAX_LOG) : [];
+      s.lastSeedDate = typeof raw.lastSeedDate === 'string' ? raw.lastSeedDate : null;
+      var w = raw.why && typeof raw.why === 'object' ? raw.why : {};
+      var validIdx = function (a) { return (Array.isArray(a) ? a : []).filter(function (i) { return typeof i === 'number' && i >= 0 && i < BENEFITS.length && i % 1 === 0; }); };
+      s.why = { bag: validIdx(w.bag), current: validIdx(w.current).slice(0, 1), seen: clampInt(w.seen, 0, 1e6, 0), taskId: w.taskId ? String(w.taskId) : null, taskText: str(w.taskText, 200) };
+
+      if (oldVersion === 2) {
+        // v3 adds evening meal planning to every day of an existing routine.
+        WEEK.forEach(function (day) {
+          var have = {};
+          s.templates[day].forEach(function (t) { have[t.title.toLowerCase()] = true; });
+          mealPlanTemplates().forEach(function (m) { if (!have[m.title.toLowerCase()]) s.templates[day].push(m); });
+        });
+        if (s.lastSeedDate === dateKey()) seedToday(s);
+      }
+      if (oldVersion < 2) {
+        // Move old categories into the new set (tasks and history), and reading into Self-care.
+        var fix = function (o) {
+          o.category = CAT_MIGRATE[o.category] || o.category;
+          if (/^read for personal growth$/i.test(o.title) && o.category === ME_TIME) o.category = 'Self-care';
+        };
+        s.tasks.forEach(fix);
+        s.log.forEach(fix);
+        // Today's untouched routine items came from the old template: swap them for the new routine.
+        s.tasks = s.tasks.filter(function (t) { return !t.templateId || t.status !== 'active' || hasProgress(t); });
+        s.tasks.forEach(function (t) { t.templateId = null; });
+        if (s.lastSeedDate === dateKey()) seedToday(s);
+      }
+      return s;
+    }
+
+    // ---------- Persistence ----------
+    var storageOk = true;
+    function loadState() {
+      var raw = null;
+      try {
+        raw = localStorage.getItem(STORAGE_KEY);
+      } catch (e) { storageOk = false; }
+      if (!raw) return defaultState();
+      try {
+        return normalize(JSON.parse(raw));
+      } catch (e) {
+        // Keep the unreadable copy rather than silently overwriting it.
+        try { localStorage.setItem(STORAGE_KEY + '.corrupt.' + Date.now(), raw); } catch (e2) {}
+        return defaultState();
+      }
+    }
+    function save() {
+      if (state.log.length > MAX_LOG) state.log = state.log.slice(-MAX_LOG);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        storageOk = true;
+      } catch (e) {
+        storageOk = false;
+      }
+      $('storage-banner').classList.toggle('show', !storageOk);
+      if (typeof scheduleSync === 'function') scheduleSync();
+    }
+
+    var state = loadState();
+
+    // ---------- Change history: who added/edited/deleted what. Kept in its own storage key, separate from the app data. ----------
+    var AUDIT_KEY = 'focusPwa.changes.v1';
+    var MAX_AUDIT = 1000;
+    function loadAudit() {
+      try {
+        var r = JSON.parse(localStorage.getItem(AUDIT_KEY) || 'null');
+        if (r && Array.isArray(r.entries)) {
+          return {
+            seenTs: typeof r.seenTs === 'number' ? r.seenTs : 0,
+            entries: r.entries.filter(function (e) { return e && typeof e.ts === 'number' && typeof e.summary === 'string'; }).map(function (e) {
+              return { id: String(e.id || uid()), ts: e.ts, who: e.who === 'admin' ? 'admin' : 'user', action: str(e.action, 40), summary: str(e.summary, 400) };
+            }).slice(-MAX_AUDIT)
+          };
+        }
+      } catch (e) {}
+      return { seenTs: 0, entries: [] };
+    }
+    function saveAudit() { try { localStorage.setItem(AUDIT_KEY, JSON.stringify(audit)); } catch (e) {} }
+    var audit = loadAudit();
+    function logChange(action, summary) {
+      audit.entries.push({ id: uid(), ts: Date.now(), who: whoAmI(), action: action, summary: summary });
+      if (audit.entries.length > MAX_AUDIT) audit.entries = audit.entries.slice(-MAX_AUDIT);
+      saveAudit();
+    }
+    function q(x) { return '“' + x + '”'; }
+
+    // ---------- Cloud sync: Firebase Auth + Firestore over plain HTTPS (no SDK, keeps the app light) ----------
+    // Every task, log entry, routine day, setting and change-history entry is one small document.
+    // Each phone pushes only what changed and pulls only what changed since its last sync.
+    var FB = { apiKey: 'AIzaSyCEzVsLJ-UasGfJiGzci5qRbCedZAxZoig', projectId: 'rise-app-5fd59' };
+    var ADMIN_EMAIL = 'rise.admin@yourmail.com';
+    var SESSION_KEY = 'rise.session.v1', SYNC_KEY = 'rise.sync.v1', MODE_KEY = 'rise.mode';
+    var DOCS_ROOT = 'projects/' + FB.projectId + '/databases/(default)/documents';
+    var PARENT = DOCS_ROOT + '/households/main';
+    var FS_URL = 'https://firestore.googleapis.com/v1/';
+    function lsGet(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+    function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+    var session = lsGet(SESSION_KEY);
+    var syncMeta = lsGet(SYNC_KEY) || { since: null, synced: {}, lastOk: 0 };
+    if (!syncMeta.synced) syncMeta.synced = {};
+    var syncState = { status: 'idle', running: false, again: false, timer: null, error: '' };
+    function syncOn() { return !!(session && session.refreshToken); }
+    function isAdminUser() { return syncOn() && String(session.email).toLowerCase() === ADMIN_EMAIL; }
+    function whoAmI() { return syncOn() ? (isAdminUser() ? 'admin' : 'user') : (ui.view === 'admin' ? 'admin' : 'user'); }
+    function saveSyncMeta() { lsSet(SYNC_KEY, syncMeta); }
+    function docId(id) { return String(id).replace(/[^A-Za-z0-9_-]/g, '_'); }
+    function stable(v) {
+      if (Array.isArray(v)) return '[' + v.map(stable).join(',') + ']';
+      if (v && typeof v === 'object') return '{' + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ':' + stable(v[k]); }).join(',') + '}';
+      return JSON.stringify(v === undefined ? null : v);
+    }
+    function hashStr(s) { var h = 5381; for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + '.' + s.length; }
+
+    // Canonical, normalised view of everything that is shared between phones.
+    function entities() {
+      var m = {};
+      state.tasks.forEach(function (t) { var n = normTask(t); if (n) m['tasks__' + docId(t.id)] = n; });
+      state.scheduled.forEach(function (sc) { var n = normTask(sc.task); if (n) m['sched__' + docId(sc.id)] = { id: sc.id, date: sc.date, task: n }; });
+      state.log.forEach(function (e) { var n = normLog(e); if (n) m['log__' + docId(e.id)] = n; });
+      WEEK.forEach(function (d) { m['tpl__' + d] = { day: d, items: (state.templates[d] || []).map(normTpl).filter(Boolean) }; });
+      m['meta__config'] = { categories: state.categories, settings: state.settings, lastSeedDate: state.lastSeedDate };
+      audit.entries.forEach(function (e) { m['changes__' + docId(e.id)] = { id: e.id, ts: e.ts, who: e.who, action: e.action, summary: e.summary }; });
+      return m;
+    }
+    function upsertById(arr, id, item) {
+      var k = -1;
+      for (var i = 0; i < arr.length; i++) if (docId(arr[i].id) === id) { k = i; break; }
+      if (item) { if (k >= 0) arr[k] = item; else arr.push(item); } else if (k >= 0) arr.splice(k, 1);
+    }
+    function applyEntity(key, obj) {
+      var i = key.indexOf('__'); if (i < 0) return;
+      var col = key.slice(0, i), id = key.slice(i + 2);
+      if (col === 'tasks') upsertById(state.tasks, id, obj && normTask(obj));
+      else if (col === 'sched') { var t = obj && normTask(obj.task); upsertById(state.scheduled, id, t && /^\d{4}-\d{2}-\d{2}$/.test(obj.date) ? { id: obj.id, date: obj.date, task: t } : null); }
+      else if (col === 'log') upsertById(state.log, id, obj && normLog(obj));
+      else if (col === 'tpl') { if (WEEK.indexOf(id) >= 0) state.templates[id] = obj && Array.isArray(obj.items) ? obj.items.map(normTpl).filter(Boolean) : []; }
+      else if (col === 'meta') {
+        if (obj) {
+          if (Array.isArray(obj.categories) && obj.categories.length >= 3) state.categories = obj.categories.map(function (c) { return str(c, 40); }).filter(Boolean);
+          if (obj.settings && typeof obj.settings.carryOver === 'boolean') state.settings = { carryOver: obj.settings.carryOver };
+          if (typeof obj.lastSeedDate === 'string') state.lastSeedDate = obj.lastSeedDate;
+        }
+      }
+      else if (col === 'changes') upsertById(audit.entries, id, obj && typeof obj.ts === 'number' && typeof obj.summary === 'string' ?
+        { id: String(obj.id), ts: obj.ts, who: obj.who === 'admin' ? 'admin' : 'user', action: str(obj.action, 40), summary: str(obj.summary, 400) } : null);
+    }
+    // A routine task freshly created by this phone's day rollover, untouched: the cloud copy (maybe with progress) wins.
+    function pristineSeed(key, ent) { return key.indexOf('tasks__s') === 0 && ent && ent.status === 'active' && !hasProgress(ent); }
+
+    async function http(url, opts) {
+      var r = await fetch(url, opts);
+      var j = null; try { j = await r.json(); } catch (e) {}
+      if (!r.ok) {
+        var err = (j && j.error) || (Array.isArray(j) && j[0] && j[0].error) || {};
+        var e2 = new Error(err.message || ('HTTP ' + r.status)); e2.status = r.status; throw e2;
+      }
+      return j;
+    }
+    async function signIn(email, password) {
+      var j = await http('https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=' + FB.apiKey, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, password: password, returnSecureToken: true })
+      });
+      session = { email: j.email, uid: j.localId, idToken: j.idToken, refreshToken: j.refreshToken, exp: Date.now() + (Number(j.expiresIn) - 60) * 1000 };
+      lsSet(SESSION_KEY, session);
+    }
+    async function idToken() {
+      if (session.idToken && Date.now() < session.exp) return session.idToken;
+      try {
+        var j = await http('https://securetoken.googleapis.com/v1/token?key=' + FB.apiKey, {
+          method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(session.refreshToken)
+        });
+        session.idToken = j.id_token; session.refreshToken = j.refresh_token; session.exp = Date.now() + (Number(j.expires_in) - 60) * 1000;
+        lsSet(SESSION_KEY, session);
+        return session.idToken;
+      } catch (e) {
+        if (e.status === 400) { signOut(); showLogin('Please sign in again.'); }
+        throw e;
+      }
+    }
+    async function fsPost(path, body) {
+      var t = await idToken();
+      return http(FS_URL + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + t }, body: JSON.stringify(body) });
+    }
+
+    async function pullDocs() {
+      // Overlap by 2 minutes so nothing written around the last sync is missed; re-applying is harmless.
+      var cursor = syncMeta.since ? new Date(new Date(syncMeta.since).getTime() - 120000).toISOString() : '1970-01-01T00:00:00Z';
+      var op = 'GREATER_THAN', seen = {}, out = [];
+      for (var page = 0; page < 50; page++) {
+        var res = await fsPost(PARENT + ':runQuery', { structuredQuery: {
+          from: [{ collectionId: 'items' }],
+          where: { fieldFilter: { field: { fieldPath: 'u' }, op: op, value: { timestampValue: cursor } } },
+          orderBy: [{ field: { fieldPath: 'u' }, direction: 'ASCENDING' }],
+          limit: 1000
+        } });
+        var docs = (res || []).filter(function (x) { return x.document; }).map(function (x) { return x.document; });
+        var fresh = docs.filter(function (d) { if (seen[d.name]) return false; seen[d.name] = true; return true; });
+        out = out.concat(fresh);
+        if (docs.length < 1000 || !fresh.length) break;
+        cursor = docs[docs.length - 1].fields.u.timestampValue; op = 'GREATER_THAN_OR_EQUAL';
+      }
+      return out;
+    }
+    function applyDocs(docs, adopt) {
+      var cur = entities(), applied = [], changed = false;
+      docs.forEach(function (d) {
+        var key = d.name.split('/').pop(), f = d.fields || {};
+        var u = f.u && f.u.timestampValue;
+        if (u && (!syncMeta.since || u > syncMeta.since)) syncMeta.since = u;
+        if (!adopt) {
+          var localH = key in cur ? hashStr(stable(cur[key])) : null;
+          var base = syncMeta.synced[key];
+          var baseH = base === undefined || base === 'DEL' ? null : base;
+          // Local edits not yet uploaded win; they'll be pushed next.
+          if (localH !== baseH && !(base === undefined && pristineSeed(key, cur[key]))) return;
+        }
+        var obj = null;
+        if (!(f.del && f.del.booleanValue)) { try { obj = JSON.parse((f.json && f.json.stringValue) || 'null'); } catch (e) { return; } }
+        if (!adopt && obj && key in cur && stable(cur[key]) === stable(obj)) { applied.push(key); return; }
+        if (!adopt && !obj && !(key in cur)) { applied.push(key); return; }
+        applyEntity(key, obj);
+        applied.push(key); changed = true;
+      });
+      state.log.sort(function (a, b) { return a.ts - b.ts; });
+      audit.entries.sort(function (a, b) { return a.ts - b.ts; });
+      var now = entities();
+      applied.forEach(function (k) { syncMeta.synced[k] = k in now ? hashStr(stable(now[k])) : 'DEL'; });
+      return changed;
+    }
+    async function pushChanges() {
+      var cur = entities(), writes = [], admin = isAdminUser();
+      Object.keys(cur).forEach(function (k) {
+        var sj = stable(cur[k]), h = hashStr(sj);
+        if (syncMeta.synced[k] === h) return;
+        // Change-history entries are write-once for the user phone (the cloud rules enforce this too).
+        if (!admin && k.indexOf('changes__') === 0 && syncMeta.synced[k] && syncMeta.synced[k] !== 'DEL') { syncMeta.synced[k] = h; return; }
+        writes.push({ k: k, json: sj, h: h });
+      });
+      Object.keys(syncMeta.synced).forEach(function (k) {
+        if (k in cur || syncMeta.synced[k] === 'DEL') return;
+        if (!admin && k.indexOf('changes__') === 0) { delete syncMeta.synced[k]; return; }
+        writes.push({ k: k, del: true });
+      });
+      for (var i = 0; i < writes.length; i += 400) {
+        var chunk = writes.slice(i, i + 400);
+        await fsPost(DOCS_ROOT + ':commit', { writes: chunk.map(function (w) {
+          return {
+            update: { name: PARENT + '/items/' + w.k, fields: {
+              json: { stringValue: w.del ? '' : w.json }, del: { booleanValue: !!w.del }, by: { stringValue: session.email }
+            } },
+            updateTransforms: [{ fieldPath: 'u', setToServerValue: 'REQUEST_TIME' }]
+          };
+        }) });
+        chunk.forEach(function (w) { syncMeta.synced[w.k] = w.del ? 'DEL' : w.h; });
+        saveSyncMeta();
+      }
+      return writes.length;
+    }
+    function scheduleSync(delay) {
+      if (!syncOn()) return;
+      clearTimeout(syncState.timer);
+      syncState.timer = setTimeout(sync, delay == null ? 1500 : delay);
+    }
+    async function sync() {
+      if (!syncOn()) return;
+      if (!navigator.onLine) { setSyncStatus('offline'); if (rollover()) rerenderSafe(); return; }
+      // Never swap data under an open dialog; try again shortly.
+      if ($('modal').classList.contains('active')) { scheduleSync(4000); return; }
+      if (syncState.running) { syncState.again = true; return; }
+      syncState.running = true; setSyncStatus('syncing');
+      var changed = false;
+      try {
+        var first = !syncMeta.joined; // this phone has never completed a sync
+        var docs = await pullDocs();
+        if ($('modal').classList.contains('active')) { syncState.again = true; return; }
+        if (first && docs.length) {
+          // New phone joining: take the family's data from the cloud.
+          state.tasks = []; state.scheduled = []; state.log = []; audit.entries = [];
+          WEEK.forEach(function (d) { state.templates[d] = []; });
+          syncMeta.synced = {};
+          applyDocs(docs, true);
+          changed = true;
+        } else if (docs.length) {
+          changed = applyDocs(docs, false);
+        }
+        if (rollover()) changed = true;
+        persistLocal();
+        await pushChanges();
+        syncMeta.joined = true; syncMeta.lastOk = Date.now(); saveSyncMeta();
+        setSyncStatus('ok');
+      } catch (e) {
+        syncState.error = e.message || String(e);
+        setSyncStatus(e.status === 403 || e.status === 401 ? 'error' : 'offline');
+        if (rollover()) changed = true;
+      } finally {
+        syncState.running = false;
+        if (changed) rerenderSafe();
+        if (syncState.again) { syncState.again = false; scheduleSync(800); }
+      }
+    }
+    function persistLocal() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+      saveAudit();
+    }
+    function rerenderSafe() { if (!$('modal').classList.contains('active')) rerender(); }
+    function agoText(ts) {
+      if (!ts) return 'never';
+      var m = Math.round((Date.now() - ts) / 60000);
+      return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m / 60) + ' h ago';
+    }
+    function setSyncStatus(st) {
+      syncState.status = st;
+      var dot = $('sync-dot'), line = $('sync-line');
+      if (!syncOn()) { dot.classList.add('hidden'); line.textContent = ''; return; }
+      dot.className = 'sync-dot ' + st;
+      var text = st === 'ok' ? '☁ Synced ' + agoText(syncMeta.lastOk) :
+                 st === 'syncing' ? '☁ Syncing…' :
+                 st === 'offline' ? '☁ Offline. Changes will sync when you\'re back online' :
+                 st === 'error' ? '☁ Sync problem: ' + syncState.error : '';
+      dot.title = text.replace('☁ ', '');
+      line.textContent = text;
+    }
+    function signOut() {
+      session = null; lsSet(SESSION_KEY, null);
+      syncMeta = { since: null, synced: {}, lastOk: 0 }; saveSyncMeta();
+      applyRoleUi();
+    }
+    function showLogin(msg) {
+      $('login-err').textContent = msg || '';
+      $('login').classList.add('show');
+    }
+    function applyRoleUi() {
+      // On the user phone (signed in, not admin) there is no Admin Panel at all.
+      $('nav-admin-btn').classList.toggle('hidden', syncOn() && !isAdminUser());
+      if (syncOn() && !isAdminUser() && ui.view === 'admin') switchView('user');
+      setSyncStatus(syncState.status);
+    }
+    $('login-form').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var fd = new FormData(this);
+      var email = String(fd.get('email') || '').trim(), pw = String(fd.get('password') || '');
+      if (!email || !pw) { $('login-err').textContent = 'Enter the email and password set up for this phone.'; return; }
+      $('login-btn').disabled = true; $('login-btn').textContent = 'Signing in…'; $('login-err').textContent = '';
+      try {
+        await signIn(email, pw);
+        lsSet(MODE_KEY, 'sync');
+        syncMeta = { since: null, synced: {}, lastOk: 0 }; saveSyncMeta();
+        $('login').classList.remove('show');
+        this.reset();
+        applyRoleUi();
+        toast(isAdminUser() ? 'Signed in as admin.' : 'Signed in. Syncing…');
+        sync();
+      } catch (err) {
+        var m = String(err.message || '');
+        $('login-err').textContent = /INVALID|PASSWORD|EMAIL_NOT_FOUND|USER/.test(m) ? 'Email or password is wrong.' :
+          /TOO_MANY/.test(m) ? 'Too many attempts. Wait a few minutes and try again.' :
+          'Couldn\'t reach the server. Check the internet connection.';
+      } finally {
+        $('login-btn').disabled = false; $('login-btn').textContent = 'Sign in';
+      }
+    });
+    $('login-local').addEventListener('click', function () {
+      lsSet(MODE_KEY, 'local');
+      $('login').classList.remove('show');
+      applyRoleUi();
+    });
+    function describeTaskEdit(before, v) {
+      var parts = [];
+      if (before.title !== v.title) parts.push('title ' + q(before.title) + ' → ' + q(v.title));
+      if (before.category !== v.category) parts.push('label ' + before.category + ' → ' + v.category);
+      if (before.context !== v.context) parts.push('mode ' + before.context + ' → ' + v.context);
+      if (before.est !== v.est) parts.push('minutes ' + before.est + ' → ' + v.est);
+      var bs = before.subtasks.map(function (x) { return typeof x === 'string' ? x : x.title; }).join('|');
+      if (bs !== v.subtasks.join('|')) parts.push('steps changed (' + before.subtasks.length + ' → ' + v.subtasks.length + ')');
+      if (v.whys && (before.whys || []).join('|') !== v.whys.join('|')) parts.push('"why it helps" changed');
+      return parts.length ? parts.join('; ') : 'no changes';
+    }
+    var ui = { openSteps: {}, view: 'user', context: 'online', adminTab: 'today', templateDay: todayDayId(), analyticsRange: '7', completedOpen: false };
+
+    // ---------- Domain logic ----------
+    function findTask(id) {
+      for (var i = 0; i < state.tasks.length; i++) if (state.tasks[i].id === id) return state.tasks[i];
+      return null;
+    }
+    function subCounts(t) {
+      var done = 0;
+      t.subtasks.forEach(function (s) { if (s.done) done++; });
+      return { done: done, total: t.subtasks.length };
+    }
+    // Progress = whatever is higher: the quick "how far did you get" answer, or ticked steps.
+    function progressPct(t) {
+      if (t.status === 'done') return 100;
+      var c = subCounts(t);
+      var steps = c.total ? Math.round((c.done / c.total) * 100) : 0;
+      return Math.max(t.progress || 0, steps);
+    }
+    function hasProgress(t) { return t.timeSpent > 0 || (t.progress || 0) > 0 || subCounts(t).done > 0 || !!t.runningSince; }
+    function runningMins(t) { return t.runningSince ? Math.max(0, Math.round((Date.now() - t.runningSince) / 60000)) : 0; }
+
+    function blankTask(f) {
+      return {
+        id: uid(), templateId: f.templateId || null, title: f.title, context: f.context || 'offline', category: f.category || ME_TIME, est: f.est || 30,
+        timeSpent: 0, progress: 0, preDoneProgress: null, status: 'active', carried: false, runningSince: null, lastDoneLogId: null, preDoneSubs: null,
+        kind: f.kind || 'normal', followTitle: f.followTitle || '', whys: f.whys || [], date: f.date || dateKey(), tag: f.tag || '', replaces: f.replaces || null,
+        createdIds: [], restore: null,
+        subtasks: (f.subtasks || []).map(function (title) { return { id: uid(), title: title, done: false }; })
+      };
+    }
+    function taskFromTemplate(tp) {
+      var t = blankTask({ templateId: tp.id, title: tp.title, context: tp.context, category: tp.category, est: tp.est, subtasks: tp.subtasks, kind: tp.kind, followTitle: tp.followTitle, whys: tp.whys });
+      t.id = 's' + dateKey().replace(/-/g, '') + '_' + tp.id;
+      return t;
+    }
+    // Adds today's template items that aren't already on the list. Returns number added.
+    function seedToday(st) {
+      st = st || state;
+      var existing = {}, titleKeys = {};
+      st.tasks.forEach(function (t) {
+        if (t.templateId) existing[t.templateId] = true;
+        // A carried-over or already-present copy (e.g. yesterday's unfinished "Read") stands in for today's.
+        titleKeys[t.title.toLowerCase() + '|' + t.category] = true;
+      });
+      var added = 0;
+      (st.templates[todayDayId()] || []).forEach(function (tp) {
+        if (existing[tp.id] || titleKeys[tp.title.toLowerCase() + '|' + tp.category]) return;
+        st.tasks.push(taskFromTemplate(tp));
+        added++;
+      });
+      return added;
+    }
+    // Put a task on today's list. A planned follow-up ("Play with the kids: Lego") replaces the plain,
+    // untouched version of itself ("Play with the kids") and remembers it so Reopen can put it back.
+    function placeTask(task) {
+      task.date = dateKey();
+      if (task.replaces) {
+        var key = task.replaces.toLowerCase();
+        for (var i = 0; i < state.tasks.length; i++) {
+          var o = state.tasks[i];
+          if (o.title.toLowerCase() === key && o.status !== 'done' && !hasProgress(o)) {
+            task.templateId = o.templateId;
+            task.restore = { templateId: o.templateId, title: o.title, context: o.context, category: o.category, est: o.est };
+            state.tasks.splice(i, 1);
+            break;
+          }
+        }
+      }
+      state.tasks.push(task);
+    }
+    // Plans made for a future day wait in state.scheduled until that day.
+    function scheduleTask(task, date) {
+      if (date <= dateKey()) placeTask(task);
+      else state.scheduled.push({ id: task.id, date: date, task: task });
+      return task.id;
+    }
+    function injectScheduled() {
+      var today = dateKey(), keep = [], n = 0;
+      state.scheduled.forEach(function (sc) {
+        if (sc.date > today) keep.push(sc);
+        else if (sc.date === today) { placeTask(sc.task); n++; }
+        // Plans for a day that already passed are dropped.
+      });
+      state.scheduled = keep;
+      return n;
+    }
+    function addLog(t, event, sessionMins, note) {
+      var c = subCounts(t);
+      var entry = {
+        id: uid(), date: dateKey(), ts: Date.now(), taskId: t.id, title: t.title, category: t.category, context: t.context,
+        event: event, sessionMins: sessionMins, totalMins: t.timeSpent, est: t.est, subDone: c.done, subTotal: c.total, progress: progressPct(t), note: note || ''
+      };
+      state.log.push(entry);
+      return entry;
+    }
+    // New-day rollover: partial work carries over (self-compassion, not a reset), then today's routine seeds in.
+    function rollover() {
+      var today = dateKey();
+      if (state.lastSeedDate === today) return false;
+      var kept = [];
+      state.tasks.forEach(function (t) {
+        if (t.runningSince) {
+          // A timer left running overnight: credit it, capped so a forgotten timer doesn't wreck the stats.
+          var mins = Math.min(runningMins(t), Math.max(t.est * 2, 30));
+          t.runningSince = null;
+          if (mins > 0) { t.timeSpent += mins; addLog(t, 'partial', mins, 'Timer auto-stopped at day change'); }
+        }
+        // The weekend family plan always carries over until it's done; other tasks only when partly done.
+        if (t.status !== 'done' && (t.kind === 'weekend' || (state.settings.carryOver && hasProgress(t)))) {
+          t.carried = true;
+          t.status = hasProgress(t) ? 'partial' : 'active';
+          t.lastDoneLogId = null;
+          kept.push(t);
+        }
+      });
+      state.tasks = kept;
+      seedToday();
+      injectScheduled();
+      state.lastSeedDate = today;
+      save();
+      return true;
+    }
+    function stopTimer(t, note) {
+      // Credits the running time to the task and returns minutes credited.
+      if (!t.runningSince) return 0;
+      var mins = runningMins(t);
+      t.runningSince = null;
+      if (mins > 0) {
+        t.timeSpent += mins;
+        if (t.status === 'active') t.status = 'partial';
+        addLog(t, 'partial', mins, note || '');
+      }
+      return mins;
+    }
+
+    // ---------- Toast ----------
+    var toastTimer = null;
+    function toast(msg) {
+      var el = $('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2600);
+    }
+
+    // ---------- Modal ----------
+    var modalHandler = null;
+    var modalExtra = null;
+    var lastFocus = null;
+    function openModal(opts) {
+      lastFocus = document.activeElement;
+      $('modal-title').textContent = opts.title;
+      $('modal-body').innerHTML = opts.body || '';
+      $('modal-error').textContent = '';
+      var confirmBtn = $('modal-confirm');
+      confirmBtn.textContent = opts.confirmText || 'Save';
+      confirmBtn.className = 'btn ' + (opts.confirmClass || 'btn-primary');
+      $('modal-cancel').textContent = opts.cancelText || 'Cancel';
+      modalHandler = opts.onConfirm || null;
+      modalExtra = opts.extra || null;
+      $('modal-extra').textContent = opts.extra ? opts.extra.text : '';
+      $('modal-extra').classList.toggle('hidden', !opts.extra);
+      var m = $('modal');
+      m.classList.add('active');
+      m.setAttribute('aria-hidden', 'false');
+      var first = $('modal-form').querySelector('#modal-body input, #modal-body select, #modal-body textarea');
+      setTimeout(function () { (first || confirmBtn).focus(); }, 30);
+    }
+    function closeModal() {
+      var m = $('modal');
+      m.classList.remove('active');
+      m.setAttribute('aria-hidden', 'true');
+      $('modal-body').innerHTML = '';
+      modalHandler = null;
+      if (lastFocus && document.body.contains(lastFocus)) { try { lastFocus.focus(); } catch (e) {} }
+    }
+    function confirmModal(title, message, confirmText, onYes, danger) {
+      openModal({
+        title: title, body: '<p class="modal-msg">' + esc(message) + '</p>', confirmText: confirmText,
+        confirmClass: danger ? 'btn-danger' : 'btn-primary', onConfirm: function () { onYes(); }
+      });
+    }
+    $('modal-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (!modalHandler) { closeModal(); return; }
+      var result = modalHandler(new FormData($('modal-form')), $('modal-form'));
+      if (typeof result === 'string') { $('modal-error').textContent = result; return; }
+      closeModal();
+    });
+    $('modal-cancel').addEventListener('click', closeModal);
+    $('modal-extra').addEventListener('click', function () {
+      var fn = modalExtra && modalExtra.onClick;
+      closeModal();
+      if (fn) fn();
+    });
+    $('modal').addEventListener('click', function (e) { if (e.target === $('modal')) closeModal(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && $('modal').classList.contains('active')) closeModal(); });
+
+    function categoryOptions(selected) {
+      var cats = state.categories.slice();
+      if (selected && cats.indexOf(selected) < 0) cats.push(selected);
+      return cats.map(function (c) { return '<option' + (c === selected ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') +
+        (state.categories.length < 10 ? '<option value="__new__">+ New label…</option>' : '');
+    }
+    function taskFormBody(t, withKind, withWhys) {
+      if (withWhys === undefined) withWhys = true;
+      t = t || {};
+      var subs = (t.subtasks || []).map(function (s) { return typeof s === 'string' ? s : s.title; }).join('\n');
+      var kind = t.kind || 'normal';
+      var kindHtml = !withKind ? '' :
+        '<label>Type<select name="kind">' +
+        [['normal', 'Normal task'], ['plan', 'Plan → follow-up next day'], ['weekend', 'Weekend family plan (can\'t be skipped)']].map(function (k) {
+          return '<option value="' + k[0] + '"' + (kind === k[0] ? ' selected' : '') + '>' + k[1] + '</option>';
+        }).join('') + '</select></label>' +
+        '<label data-kind-only="plan"' + (kind === 'plan' ? '' : ' style="display:none"') + '>Follow-up task name (matches tomorrow\'s routine item)<input name="followTitle" maxlength="60" autocomplete="off" value="' + esc(t.followTitle || '') + '" placeholder="e.g. Play with the kids"></label>';
+      return '' +
+        '<label>Title<input name="title" maxlength="80" required value="' + esc(t.title || '') + '" autocomplete="off"></label>' +
+        kindHtml +
+        '<div class="row2">' +
+        '  <label>Mode<select name="context"><option value="online"' + (t.context !== 'offline' ? ' selected' : '') + '>🌐 Online</option><option value="offline"' + (t.context === 'offline' ? ' selected' : '') + '>🏡 Offline</option></select></label>' +
+        '  <label>Label<select name="category">' + categoryOptions(t.category || state.categories[0]) + '</select></label>' +
+        '</div>' +
+        '<label data-new-label style="display:none">New label name<input name="newLabel" maxlength="40" autocomplete="off" placeholder="e.g. Health"></label>' +
+        '<label>Estimated minutes<input name="est" type="number" inputmode="numeric" min="1" max="600" value="' + (t.est || 15) + '"></label>' +
+        '<label>Steps (optional, one per line)<textarea name="subtasks" rows="3" placeholder="Leave empty for a simple one-tap task">' + esc(subs) + '</textarea></label>' +
+        (!withWhys ? '' : '<label>Why it helps (optional, one per line, shown at the top of the app)<textarea name="whys" rows="3" placeholder="' + esc((t.title ? whysFor({ title: t.title, category: t.category || '', whys: [] }) : []).join('\n') || 'e.g. Mornings are calmer when this is done the night before.') + '">' + esc((t.whys || []).join('\n')) + '</textarea></label>');
+    }
+    $('modal-form').addEventListener('change', function (e) {
+      if (e.target.name === 'category') {
+        var box = $('modal-form').querySelector('[data-new-label]');
+        if (box) { box.style.display = e.target.value === '__new__' ? '' : 'none'; if (e.target.value === '__new__') box.querySelector('input').focus(); }
+        return;
+      }
+      if (e.target.name !== 'kind') return;
+      Array.prototype.forEach.call($('modal-form').querySelectorAll('[data-kind-only]'), function (el) {
+        el.style.display = el.getAttribute('data-kind-only') === e.target.value ? '' : 'none';
+      });
+    });
+    function applyNewLabel(v) {
+      if (v.newLabel && state.categories.indexOf(v.newLabel) < 0 && state.categories.length < 10) {
+        state.categories.push(v.newLabel);
+        logChange('label.add', 'Added label ' + q(v.newLabel));
+      }
+    }
+    function readTaskForm(fd) {
+      var title = str(fd.get('title'), 80);
+      if (!title) return 'Please enter a title.';
+      var est = parseInt(fd.get('est'), 10);
+      if (isNaN(est) || est < 1 || est > 600) return 'Estimated minutes must be between 1 and 600.';
+      var category = str(fd.get('category'), 40) || ME_TIME;
+      var newLabel = null;
+      if (category === '__new__') {
+        category = str(fd.get('newLabel'), 40);
+        if (!category) return 'Type a name for the new label.';
+        var existing = state.categories.filter(function (c) { return c.toLowerCase() === category.toLowerCase(); })[0];
+        if (existing) category = existing; else newLabel = category;
+      }
+      var kind = fd.get('kind') === 'plan' || fd.get('kind') === 'weekend' ? fd.get('kind') : 'normal';
+      var followTitle = str(fd.get('followTitle'), 60);
+      if (kind === 'plan' && !followTitle) return 'Name the follow-up task (e.g. Play with the kids).';
+      return {
+        title: title,
+        context: fd.get('context') === 'offline' ? 'offline' : 'online',
+        category: category,
+        newLabel: newLabel,
+        est: est,
+        kind: kind,
+        followTitle: kind === 'plan' ? followTitle : '',
+        subtasks: String(fd.get('subtasks') || '').split('\n').map(function (s) { return s.trim().slice(0, 120); }).filter(Boolean).slice(0, 30),
+        whys: !fd.has('whys') ? null : String(fd.get('whys') || '').split('\n').map(function (s) { return s.trim().slice(0, 200); }).filter(Boolean).slice(0, 5)
+      };
+    }
+
+    // ---------- User view rendering ----------
+    function renderSummary() {
+      var total = state.tasks.length, done = 0, mins = 0, meTotal = 0, meDone = 0;
+      state.tasks.forEach(function (t) {
+        if (t.status === 'done') done++;
+        if (t.category === ME_TIME) { meTotal++; if (t.status === 'done') meDone++; }
+      });
+      var today = dateKey();
+      state.log.forEach(function (e) { if (e.date === today) mins += e.sessionMins; });
+      $('summary-strip').innerHTML =
+        '<div class="stat"><div class="stat-value">' + done + '/' + total + '</div><div class="stat-label">Tasks done</div></div>' +
+        '<div class="stat"><div class="stat-value">' + fmtMins(mins) + '</div><div class="stat-label">Focused today</div></div>' +
+        '<div class="stat metime"><div class="stat-value">' + (meTotal ? meDone + '/' + meTotal : '—') + '</div><div class="stat-label">Me Time</div></div>';
+    }
+
+    function taskCardHtml(t) {
+      var c = subCounts(t);
+      var pct = progressPct(t);
+      var isMe = t.category === ME_TIME;
+      var done = t.status === 'done';
+      var id = esc(t.id);
+      var pinned = t.kind === 'weekend' && !done;
+      var h = '<div class="task-item' + (isMe ? ' metime' : '') + (done ? ' done' : '') + (pinned ? ' pinned' : '') + '" data-card="' + id + '">';
+      if (pinned) h += '<span class="pin-note">📌 Do this before the weekend' + (t.carried ? ' · still waiting' : '') + '</span>';
+      h += '<div class="task-header"><span class="task-title">' + esc(t.title) + '</span><span class="badges">';
+      if (done) h += '<span class="badge badge-done">Done</span>';
+      else if (t.carried) h += '<span class="badge badge-carried">Carried over</span>';
+      else if (t.status === 'partial') h += '<span class="badge badge-partial">' + pct + '%</span>';
+      if (t.tag) h += '<span class="badge badge-family">' + esc(t.tag) + '</span>';
+      h += '<span class="badge' + (isMe ? ' badge-metime' : '') + '">' + esc(t.category) + '</span>' +
+           '<button class="btn-edit" type="button" aria-label="Edit or delete task" data-action="edit" data-task="' + id + '">✎</button></span></div>';
+
+      h += '<div class="task-meta"><span>' + (t.runningSince ? '<span class="timer-live" data-timer-since="' + t.runningSince + '">' + fmtClock(Date.now() - t.runningSince) + '</span>' : (pct ? pct + '% done' : 'Not started')) + '</span>';
+      h += '<span>' + t.timeSpent + ' / ' + t.est + ' min</span></div>';
+      h += '<div class="progress-bar-bg"><div class="progress-bar-fill" style="width:' + pct + '%;"></div></div>';
+
+      // Optional steps: only shown when a routine defines them, and collapsed by default.
+      if (c.total) {
+        var open = !!ui.openSteps[t.id];
+        h += '<button class="steps-toggle" type="button" data-action="steps" data-task="' + id + '" aria-expanded="' + open + '">' + (open ? '▾' : '▸') + ' Steps ' + c.done + '/' + c.total + '</button>';
+        if (open) {
+          h += '<div class="subtask-container">';
+          t.subtasks.forEach(function (s) {
+            h += '<div class="subtask-row' + (s.done ? ' done' : '') + '"><label><input type="checkbox" data-action="toggle-sub" data-task="' + id + '" data-sub="' + esc(s.id) + '"' + (s.done ? ' checked' : '') + (done ? ' disabled' : '') + '><span>' + esc(s.title) + '</span></label></div>';
+          });
+          h += '</div>';
+        }
+      }
+
+      h += '<div class="task-actions">';
+      if (done) {
+        h += '<button class="btn-action btn-subtask" type="button" data-action="reopen" data-task="' + id + '">Reopen</button>';
+      } else {
+        h += '<button class="btn-action btn-timer' + (t.runningSince ? ' running' : '') + '" type="button" data-action="timer" data-task="' + id + '">' + (t.runningSince ? '■ Stop' : '▶ Start') + '</button>';
+        h += '<button class="btn-action btn-pause" type="button" data-action="pause" data-task="' + id + '">Pause</button>';
+        h += t.kind === 'normal'
+          ? '<button class="btn-action btn-done" type="button" data-action="complete" data-task="' + id + '">Done</button>'
+          : '<button class="btn-action btn-plan" type="button" data-action="complete" data-task="' + id + '">Plan it</button>';
+      }
+      h += '</div></div>';
+      return h;
+    }
+
+    function renderTasks() {
+      ['online', 'offline'].forEach(function (ctx) {
+        var btn = $('btn-' + ctx);
+        var open = state.tasks.filter(function (t) { return t.context === ctx && t.status !== 'done'; }).length;
+        btn.classList.toggle('active', ui.context === ctx);
+        btn.setAttribute('aria-pressed', ui.context === ctx ? 'true' : 'false');
+        btn.innerHTML = (ctx === 'online' ? '🌐 Online' : '🏡 Offline') + '<span class="count-pill">' + open + '</span>';
+      });
+      $('tasks-heading').textContent = DAY_NAMES[todayDayId()] + "'s Tasks";
+
+      var hasMe = state.tasks.some(function (t) { return t.category === ME_TIME; });
+      $('metime-nudge').innerHTML = hasMe ? '' :
+        '<div class="metime-nudge"><p>No Me Time planned today. You\'ve earned some.</p><button class="btn btn-metime" type="button" data-action="add-metime">+ Add</button></div>';
+
+      var list = state.tasks.filter(function (t) { return t.context === ui.context; });
+      var open = list.filter(function (t) { return t.status !== 'done'; });
+      var closed = list.filter(function (t) { return t.status === 'done'; });
+      // Weekend plan pinned first, then Me Time, then partial work, then the rest.
+      function rank(t) { return (t.kind === 'weekend' ? 0 : 10) + (t.category === ME_TIME ? 0 : 2) + (t.status === 'partial' ? 0 : 1); }
+      open.sort(function (a, b) { return rank(a) - rank(b); });
+
+      var html = '';
+      if (!list.length) {
+        html = '<p class="muted">No ' + ui.context + ' tasks today. Add one from the Admin Panel, or switch mode.</p>';
+      } else {
+        if (!open.length) html += '<p class="muted" style="margin-bottom: 8px;">All ' + ui.context + ' tasks done. Nice work. 🎉</p>';
+        open.forEach(function (t) { html += taskCardHtml(t); });
+        if (closed.length) {
+          html += '<details class="completed" id="completed-details"' + (ui.completedOpen ? ' open' : '') + '><summary>Completed (' + closed.length + ')</summary>';
+          closed.forEach(function (t) { html += taskCardHtml(t); });
+          html += '</details>';
+        }
+      }
+      $('task-list-container').innerHTML = html;
+      var det = $('completed-details');
+      if (det) det.addEventListener('toggle', function () { ui.completedOpen = det.open; });
+    }
+
+    function renderRadar() {
+      var cats = state.categories;
+      var n = cats.length;
+      // Series A: progress today per category (avg % across that category's tasks).
+      var prog = cats.map(function (c) {
+        var ts = state.tasks.filter(function (t) { return t.category === c; });
+        if (!ts.length) return 0;
+        return ts.reduce(function (a, t) { return a + progressPct(t); }, 0) / ts.length;
+      });
+      // Series B: share of focused minutes over the last 7 days, scaled to the top category.
+      var cutoff = daysAgoKey(6);
+      var mins = cats.map(function (c) {
+        return state.log.reduce(function (a, e) { return a + (e.category === c && e.date >= cutoff ? e.sessionMins : 0); }, 0);
+      });
+      var maxMin = Math.max.apply(null, mins.concat([0]));
+      var share = mins.map(function (m) { return maxMin ? (m / maxMin) * 100 : 0; });
+
+      var W = 400, H = 280, cx = 200, cy = 142, R = 90;
+      function pt(i, v) {
+        var a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+        return [cx + Math.cos(a) * R * v, cy + Math.sin(a) * R * v];
+      }
+      function poly(vals) {
+        return vals.map(function (v, i) { var p = pt(i, Math.max(0.02, v / 100)); return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
+      }
+      var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Category mastery radar chart">';
+      [0.25, 0.5, 0.75, 1].forEach(function (r) {
+        var ring = cats.map(function (_, i) { var p = pt(i, r); return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
+        s += '<polygon points="' + ring + '" fill="none" stroke="#334155" stroke-width="' + (r === 1 ? 1.5 : 1) + '"' + (r === 1 ? '' : ' stroke-dasharray="2,3"') + '/>';
+      });
+      cats.forEach(function (_, i) { var p = pt(i, 1); s += '<line x1="' + cx + '" y1="' + cy + '" x2="' + p[0].toFixed(1) + '" y2="' + p[1].toFixed(1) + '" stroke="#334155"/>'; });
+      if (maxMin) s += '<polygon points="' + poly(share) + '" fill="rgba(236,72,153,0.12)" stroke="#ec4899" stroke-width="1.5" stroke-dasharray="4,3"/>';
+      s += '<polygon points="' + poly(prog) + '" fill="rgba(59,130,246,0.3)" stroke="#3b82f6" stroke-width="2"/>';
+      prog.forEach(function (v, i) { var p = pt(i, Math.max(0.02, v / 100)); s += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="3" fill="#3b82f6"/>'; });
+      cats.forEach(function (c, i) {
+        var a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+        var p = pt(i, 1.14);
+        var cos = Math.cos(a), sin = Math.sin(a);
+        var anchor = cos > 0.3 ? 'start' : cos < -0.3 ? 'end' : 'middle';
+        var y = p[1] + (sin > 0.3 ? 10 : sin < -0.3 ? -4 : 4);
+        var isMe = c === ME_TIME;
+        s += '<text x="' + p[0].toFixed(1) + '" y="' + y.toFixed(1) + '" fill="' + (isMe ? '#f9a8d4' : '#94a3b8') + '" font-size="12" font-weight="' + (isMe ? 700 : 400) + '" text-anchor="' + anchor + '">' + esc(c) +
+             '<tspan fill="#64748b" font-size="10"> ' + Math.round(prog[i]) + '%</tspan></text>';
+      });
+      s += '</svg>';
+      $('radar').innerHTML = s;
+    }
+
+    // Shuffle-bag: draw from a shuffled list and refill only when it's empty, so every reason shows before any repeats.
+    function drawGeneral() {
+      if (!state.why.bag.length) {
+        var bag = BENEFITS.map(function (_, i) { return i; });
+        for (var i = bag.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var tmp = bag[i]; bag[i] = bag[j]; bag[j] = tmp; }
+        // Don't repeat the reason just shown across a refill.
+        var last = state.why.current[0];
+        if (bag[bag.length - 1] === last && bag.length > 1) { bag.unshift(bag.pop()); }
+        state.why.bag = bag;
+      }
+      state.why.current = [state.why.bag.pop()];
+      state.why.seen++;
+    }
+    // One benefit of a task still open today, picked from a different task than last time when possible.
+    function drawTaskWhy() {
+      var pool = state.tasks.filter(function (t) { return t.status !== 'done' && whysFor(t).length; });
+      if (!pool.length) pool = state.tasks.filter(function (t) { return whysFor(t).length; });
+      if (pool.length > 1) pool = pool.filter(function (t) { return t.id !== state.why.taskId; });
+      if (!pool.length) { state.why.taskId = null; state.why.taskText = ''; return; }
+      var t = pool[Math.floor(Math.random() * pool.length)];
+      var lines = whysFor(t);
+      state.why.taskId = t.id;
+      state.why.taskText = lines[Math.floor(Math.random() * lines.length)];
+    }
+    function newBenefits() { drawGeneral(); drawTaskWhy(); save(); }
+    function renderWhy() {
+      if (!state.why.current.length) newBenefits();
+      var task = findTask(state.why.taskId);
+      if (state.why.taskId && !task) { drawTaskWhy(); save(); task = findTask(state.why.taskId); }
+      var round = BENEFITS.length - state.why.bag.length;
+      var h = '<div class="why-head"><span class="why-title">Why you\'re not scrolling</span>' +
+        '<button class="btn-link" type="button" data-action="why-more">Another ↻</button></div>' +
+        '<ul class="why-list"><li>' + esc(BENEFITS[state.why.current[0]]) + '</li></ul>';
+      if (task && state.why.taskText) {
+        h += '<div class="why-head" style="margin-top: 12px;"><button class="why-task" type="button" data-action="why-goto" data-task="' + esc(task.id) + '">Why “' + esc(task.title) + '” ›</button></div>' +
+          '<ul class="why-list task"><li>' + esc(state.why.taskText) + '</li></ul>';
+      }
+      h += '<div class="why-foot"><span>' + round + ' of ' + BENEFITS.length + ' reasons seen this round</span></div>';
+      $('why-card').innerHTML = h;
+    }
+
+    function renderUser() {
+      renderWhy();
+      renderSummary();
+      renderTasks();
+      renderRadar();
+    }
+
+    // ---------- User actions ----------
+    $('btn-online').addEventListener('click', function () { ui.context = 'online'; renderTasks(); });
+    $('btn-offline').addEventListener('click', function () { ui.context = 'offline'; renderTasks(); });
+
+    $('user-view').addEventListener('change', function (e) {
+      var el = e.target;
+      if (el.getAttribute('data-action') !== 'toggle-sub') return;
+      var t = findTask(el.getAttribute('data-task'));
+      if (!t || t.status === 'done') return;
+      var sid = el.getAttribute('data-sub');
+      t.subtasks.forEach(function (s) { if (s.id === sid) s.done = el.checked; });
+      if (t.status === 'active' && subCounts(t).done > 0) t.status = 'partial';
+      save();
+      renderUser();
+      var c = subCounts(t);
+      if (c.total && c.done === c.total) toast('All steps ticked. Tap Done when ready.');
+    });
+
+    $('user-view').addEventListener('click', function (e) {
+      var el = e.target.closest('[data-action]');
+      if (!el || el.tagName === 'INPUT') return;
+      var action = el.getAttribute('data-action');
+      var t = findTask(el.getAttribute('data-task'));
+      if (action === 'add-metime') return openAddMeTime();
+      if (action === 'user-add-task') return openTaskEditor(null);
+      if (action === 'user-labels') return openLabels();
+      if (action === 'edit' && t) return openTaskEditor(t);
+      if (action === 'why-more') { newBenefits(); renderWhy(); return; }
+      if (action === 'why-goto' && t) {
+        // Jump to that task: switch to its mode and scroll it into view.
+        ui.context = t.context;
+        if (t.status === 'done') ui.completedOpen = true;
+        renderTasks();
+        var card = document.querySelector('[data-card="' + t.id.replace(/"/g, '') + '"]');
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      if (!t) return;
+      if (action === 'timer') return toggleTimer(t);
+      if (action === 'steps') { ui.openSteps[t.id] = !ui.openSteps[t.id]; renderTasks(); return; }
+      if (action === 'pause') return openPause(t);
+      if (action === 'complete') return quickComplete(t);
+      if (action === 'reopen') return reopenTask(t);
+    });
+
+    function toggleTimer(t) {
+      if (t.runningSince) {
+        openPause(t);
+        return;
+      }
+      // Only one timer at a time; credit the other one as a partial session.
+      state.tasks.forEach(function (o) {
+        if (o !== t && o.runningSince) {
+          var m = stopTimer(o, 'Switched task');
+          if (m) toast('Saved ' + m + 'm on "' + o.title + '"');
+        }
+      });
+      t.runningSince = Date.now();
+      save();
+      renderUser();
+    }
+
+    var PROGRESS_CHOICES = [[25, 'A little', '~25%'], [50, 'About half', '~50%'], [75, 'Most of it', '~75%']];
+    function openPause(t) {
+      var running = !!t.runningSince;
+      var suggested = running ? Math.max(1, runningMins(t)) : 10;
+      var cur = progressPct(t);
+      // Preselect the next level above where the task already is.
+      var pick = 25;
+      for (var i = 0; i < PROGRESS_CHOICES.length; i++) { pick = PROGRESS_CHOICES[i][0]; if (pick > cur) break; }
+      var chips = PROGRESS_CHOICES.map(function (ch) {
+        return '<label><input type="radio" name="progress" value="' + ch[0] + '"' + (ch[0] === pick ? ' checked' : '') + '><span>' + ch[1] + '<small>' + ch[2] + '</small></span></label>';
+      }).join('');
+      openModal({
+        title: 'How far did you get?',
+        body: '<p class="modal-msg">' + esc(t.title) + '<br><span class="muted">Partial progress counts. Pick it up again whenever you like.</span></p>' +
+              '<div class="choice-row" role="radiogroup" aria-label="Progress">' + chips + '</div>' +
+              '<label>Minutes this session' + (running ? ' (from timer)' : '') + '<input name="mins" type="number" inputmode="numeric" min="0" max="600" value="' + suggested + '"></label>',
+        confirmText: 'Save progress',
+        confirmClass: 'btn-pause',
+        onConfirm: function (fd) {
+          var raw = String(fd.get('mins') || '0').trim();
+          var mins = parseInt(raw, 10);
+          if (!/^\d+$/.test(raw) || mins > 600) return 'Enter a whole number of minutes from 0 to 600.';
+          t.runningSince = null;
+          t.timeSpent += mins;
+          t.progress = Math.max(t.progress || 0, clampInt(fd.get('progress'), 0, 100, 25));
+          t.status = 'partial';
+          addLog(t, 'partial', mins, '');
+          save(); renderUser();
+          toast('Saved at ' + progressPct(t) + '%. Well done.');
+        }
+      });
+    }
+
+    function markDone(t, mins) {
+      t.runningSince = null;
+      t.timeSpent += mins;
+      t.preDoneSubs = t.subtasks.filter(function (s) { return s.done; }).map(function (s) { return s.id; });
+      t.preDoneProgress = t.progress || 0;
+      t.subtasks.forEach(function (s) { s.done = true; });
+      t.status = 'done';
+      var entry = addLog(t, 'done', mins, '');
+      t.lastDoneLogId = entry.id;
+      save(); renderUser();
+      toast((t.category === ME_TIME ? 'Me Time logged 💗' : 'Done 🎉') + ' · ' + t.timeSpent + ' min total');
+    }
+
+    // One tap when we already know the time (timer running, or time logged earlier); otherwise ask once.
+    function quickComplete(t) {
+      if (t.kind === 'plan') return openPlanDone(t);
+      if (t.kind === 'weekend') return openWeekendDone(t);
+      if (t.runningSince) return markDone(t, Math.max(1, runningMins(t)));
+      if (t.timeSpent > 0) return markDone(t, 0);
+      openComplete(t);
+    }
+
+    function openComplete(t) {
+      openModal({
+        title: 'How long did it take?',
+        body: '<p class="modal-msg">' + esc(t.title) + '</p>' +
+              '<label>Minutes<input name="mins" type="number" inputmode="numeric" min="0" max="600" value="' + t.est + '"></label>' +
+              '<p class="muted small">Tip: tap ▶ Start next time and Done becomes one tap.</p>',
+        confirmText: 'Mark done',
+        confirmClass: 'btn-success',
+        onConfirm: function (fd) {
+          var raw = String(fd.get('mins') || '0').trim();
+          var mins = parseInt(raw, 10);
+          if (!/^\d+$/.test(raw) || mins > 600) return 'Enter a whole number of minutes from 0 to 600.';
+          markDone(t, mins);
+        }
+      });
+    }
+
+    function findTemplate(id) {
+      if (!id) return null;
+      for (var d = 0; d < WEEK.length; d++) {
+        var list = state.templates[WEEK[d]] || [];
+        for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+      }
+      return null;
+    }
+    function sessionMinsSuggestion(t) { return t.runningSince ? Math.max(1, runningMins(t)) : (t.timeSpent > 0 ? 0 : t.est); }
+    function readMins(fd) {
+      var raw = String(fd.get('mins') || '0').trim();
+      var mins = parseInt(raw, 10);
+      return (!/^\d+$/.test(raw) || mins > 600) ? null : mins;
+    }
+
+    // "Plan tomorrow's play with the kids" → asks what, and tomorrow's "Play with the kids" becomes "Play with the kids: <plan>".
+    function openPlanDone(t) {
+      if (!t.followEst) { var src = findTemplate(t.templateId); t.followEst = src ? src.followEst : 30; }
+      var follow = t.followTitle || 'Follow-up';
+      var target = addDays(t.date || dateKey(), 1);
+      openModal({
+        title: "What's the plan?",
+        body: '<p class="modal-msg">' + esc(t.title) + '</p>' +
+              '<label>Plan<input name="plan" maxlength="60" autocomplete="off" placeholder="' + (/play|kid/i.test(follow) ? 'e.g. Lego tower, drawing, cycling' : /breakfast|lunch|dinner|meal/i.test(follow) ? 'e.g. Poha, dal rice, pasta' : 'What will you do?') + '"></label>' +
+              '<p class="muted small" style="margin: -6px 0 12px;">' + (target <= dateKey() ? 'Today' : 'Tomorrow') + '\'s task becomes “' + esc(follow) + ': …”. Leave empty to keep it open.</p>' +
+              '<label>Minutes spent planning<input name="mins" type="number" inputmode="numeric" min="0" max="600" value="' + sessionMinsSuggestion(t) + '"></label>',
+        confirmText: 'Save plan',
+        confirmClass: 'btn-plan',
+        onConfirm: function (fd) {
+          var mins = readMins(fd);
+          if (mins === null) return 'Enter a whole number of minutes from 0 to 600.';
+          var plan = str(fd.get('plan'), 60);
+          t.createdIds = [];
+          if (plan) {
+            var tp = target.split('-');
+            var tDay = JS_DAY[new Date(+tp[0], +tp[1] - 1, +tp[2]).getDay()];
+            var tomorrowTpl = (state.templates[tDay] || []).filter(function (x) { return x.title.toLowerCase() === follow.toLowerCase(); })[0];
+            var nt = blankTask({ title: (follow + ': ' + plan).slice(0, 80), context: tomorrowTpl ? tomorrowTpl.context : 'offline', category: t.category, est: tomorrowTpl ? tomorrowTpl.est : (t.followEst || 30), tag: 'Planned', replaces: follow });
+            t.createdIds.push(scheduleTask(nt, target));
+          }
+          markDone(t, mins);
+          if (plan) toast('Planned: ' + plan + (target <= dateKey() ? ' (added for today)' : ' · ready tomorrow'));
+        }
+      });
+    }
+
+    // The weekend this plan is for: this coming Saturday/Sunday (or the current weekend if it's already here).
+    function weekendDates() {
+      var today = dateKey(), dow = new Date().getDay();
+      var sat = dow === 6 ? today : dow === 0 ? addDays(today, -1) : addDays(today, 6 - dow);
+      return [sat, addDays(sat, 1)].filter(function (d) { return d >= today; });
+    }
+    function openWeekendDone(t) {
+      var days = weekendDates();
+      var fields = days.map(function (d, i) {
+        return '<label>' + esc(prettyDate(d)) + '<textarea name="day' + i + '" rows="3" placeholder="One plan per line, e.g.&#10;Park in the morning&#10;Visit grandparents"></textarea></label>';
+      }).join('');
+      openModal({
+        title: 'Weekend plan with family',
+        body: '<p class="modal-msg">Each line becomes a Family task on that day.</p>' + fields +
+              '<label>Minutes spent planning<input name="mins" type="number" inputmode="numeric" min="0" max="600" value="' + sessionMinsSuggestion(t) + '"></label>',
+        confirmText: 'Save weekend plan',
+        confirmClass: 'btn-plan',
+        onConfirm: function (fd) {
+          var mins = readMins(fd);
+          if (mins === null) return 'Enter a whole number of minutes from 0 to 600.';
+          var plans = days.map(function (d, i) {
+            return String(fd.get('day' + i) || '').split('\n').map(function (x) { return x.trim().slice(0, 80); }).filter(Boolean).slice(0, 10);
+          });
+          var total = plans.reduce(function (a, p) { return a + p.length; }, 0);
+          if (!total) return 'Add at least one family plan. That is the point of this one 🙂';
+          t.createdIds = [];
+          days.forEach(function (d, i) {
+            plans[i].forEach(function (title) {
+              t.createdIds.push(scheduleTask(blankTask({ title: title, context: 'offline', category: t.category, est: 60, tag: 'Weekend plan' }), d));
+            });
+          });
+          markDone(t, mins);
+          toast('Weekend planned: ' + total + ' family task' + (total > 1 ? 's' : '') + ' added 💙');
+        }
+      });
+    }
+
+    // Undo tasks a plan created (only ones not started yet) and bring back what they replaced.
+    function undoCreated(t) {
+      if (!t.createdIds || !t.createdIds.length) return;
+      var ids = t.createdIds, restored = [];
+      state.scheduled = state.scheduled.filter(function (sc) { return ids.indexOf(sc.id) < 0; });
+      state.tasks = state.tasks.filter(function (x) {
+        if (ids.indexOf(x.id) < 0 || x.status === 'done' || hasProgress(x)) return true;
+        if (x.restore) restored.push(blankTask(x.restore));
+        return false;
+      });
+      state.tasks = state.tasks.concat(restored);
+      t.createdIds = [];
+    }
+
+    function reopenTask(t) {
+      undoCreated(t);
+      // Undo the completion: drop its log entry and the minutes that came with it.
+      if (t.lastDoneLogId) {
+        var idx = -1;
+        for (var i = state.log.length - 1; i >= 0; i--) if (state.log[i].id === t.lastDoneLogId) { idx = i; break; }
+        if (idx >= 0) {
+          t.timeSpent = Math.max(0, t.timeSpent - state.log[idx].sessionMins);
+          state.log.splice(idx, 1);
+        }
+      }
+      t.lastDoneLogId = null;
+      // Restore the subtasks that were actually ticked before Complete auto-ticked the rest.
+      if (Array.isArray(t.preDoneSubs)) {
+        t.subtasks.forEach(function (s) { s.done = t.preDoneSubs.indexOf(s.id) >= 0; });
+        t.preDoneSubs = null;
+      }
+      if (typeof t.preDoneProgress === 'number') { t.progress = t.preDoneProgress; t.preDoneProgress = null; }
+      t.status = hasProgress(t) ? 'partial' : 'active';
+      save(); renderUser();
+      toast('Task reopened.');
+    }
+
+    function openAddMeTime() {
+      openModal({
+        title: 'Add Me Time',
+        body: '<label>What would feel good?<input name="title" maxlength="80" autocomplete="off" placeholder="e.g. Sketching, music, a walk"></label>' +
+              '<div class="row2"><label>Mode<select name="context"><option value="offline">🏡 Offline</option><option value="online"' + (ui.context === 'online' ? ' selected' : '') + '>🌐 Online</option></select></label>' +
+              '<label>Minutes<input name="est" type="number" inputmode="numeric" min="1" max="600" value="15"></label></div>',
+        confirmText: 'Add',
+        confirmClass: 'btn-metime',
+        onConfirm: function (fd) {
+          var title = str(fd.get('title'), 80);
+          if (!title) return 'Give it a name.';
+          var est = clampInt(fd.get('est'), 1, 600, 15);
+          var ctx = fd.get('context') === 'online' ? 'online' : 'offline';
+          state.tasks.push(blankTask({ title: title, context: ctx, category: ME_TIME, est: est }));
+          logChange('task.add', 'Added Me Time task ' + q(title) + ' (' + est + ' min)');
+          ui.context = ctx;
+          save(); renderUser();
+        }
+      });
+    }
+
+    // ---------- Views & PIN ----------
+    function switchView(view) {
+      ui.view = view;
+      $('user-view').style.display = view === 'user' ? 'block' : 'none';
+      $('admin-view').style.display = view === 'admin' ? 'block' : 'none';
+      $('nav-user-btn').className = 'btn-toggle' + (view === 'user' ? ' active-user' : '');
+      $('nav-admin-btn').className = 'btn-toggle' + (view === 'admin' ? ' active-admin' : '');
+      if (view === 'admin') renderAdmin(); else renderUser();
+      window.scrollTo(0, 0);
+    }
+    $('nav-user-btn').addEventListener('click', function () { switchView('user'); });
+    $('nav-admin-btn').addEventListener('click', function () {
+      if (ui.view === 'admin') return;
+      if (syncOn()) { if (isAdminUser()) switchView('admin'); return; }
+      openModal({
+        title: 'Enter Admin PIN',
+        body: '<label>PIN<input name="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8"' + (state.pin === '1234' ? ' placeholder="Default PIN: 1234"' : '') + '></label>',
+        confirmText: 'Unlock',
+        onConfirm: function (fd) {
+          if (String(fd.get('pin') || '') !== state.pin) {
+            var input = $('modal-form').querySelector('input[name="pin"]');
+            if (input) { input.value = ''; input.focus(); }
+            return 'Incorrect PIN.';
+          }
+          switchView('admin');
+        }
+      });
+    });
+
+    // ---------- Admin rendering ----------
+    function renderAdmin() {
+      Array.prototype.forEach.call(document.querySelectorAll('.admin-tab'), function (b) {
+        b.classList.toggle('active', b.getAttribute('data-tab') === ui.adminTab);
+      });
+      var html = '';
+      if (ui.adminTab === 'today') html = adminTodayHtml();
+      else if (ui.adminTab === 'template') html = adminTemplateHtml();
+      else if (ui.adminTab === 'analytics') html = adminAnalyticsHtml();
+      else if (ui.adminTab === 'changes') { html = adminChangesHtml(); audit.seenTs = Date.now(); saveAudit(); }
+      else html = adminSettingsHtml();
+      var unseen = audit.entries.filter(function (e) { return e.who === 'user' && e.ts > audit.seenTs; }).length;
+      var tab = document.querySelector('.admin-tab[data-tab="changes"]');
+      tab.innerHTML = 'Changes' + (unseen && ui.adminTab !== 'changes' ? '<span class="tab-count">' + unseen + '</span>' : '');
+      $('admin-content').innerHTML = html;
+      var chip = document.querySelector('.day-chip.active');
+      if (chip && chip.parentNode.scrollWidth > chip.parentNode.clientWidth) {
+        chip.parentNode.scrollLeft = chip.offsetLeft - chip.parentNode.offsetLeft - chip.parentNode.clientWidth / 2 + chip.offsetWidth / 2;
+      }
+    }
+
+    function adminTodayHtml() {
+      var h = '<div class="card"><h3>Today · ' + DAY_NAMES[todayDayId()] + ' ' + esc(dateKey()) + '</h3>';
+      if (!state.tasks.length) h += '<p class="muted">Nothing on today\'s list.</p>';
+      state.tasks.forEach(function (t) {
+        var c = subCounts(t);
+        h += '<div class="list-row"><div class="grow"><div class="title"><span class="dot ' + t.context + '"></span>' + esc(t.title) + '</div>' +
+             '<div class="sub">' + esc(t.category) + ' · ' + t.timeSpent + '/' + t.est + 'm · ' + progressPct(t) + '% · ' + (c.total ? c.done + '/' + c.total + ' steps · ' : '') + t.status + (t.carried ? ' (carried)' : '') + (t.templateId ? ' · routine' : ' · one-off') + '</div></div>' +
+             '<button class="btn btn-secondary" type="button" data-action="edit-task" data-id="' + esc(t.id) + '">Edit</button>' +
+             '<button class="btn-icon" type="button" aria-label="Remove task" data-action="del-task" data-id="' + esc(t.id) + '">🗑</button></div>';
+      });
+      h += '<div class="btn-row" style="margin-top: 12px;"><button class="btn btn-primary" type="button" data-action="new-task">+ One-off task</button>' +
+           '<button class="btn btn-secondary" type="button" data-action="reseed">Pull in missing routine items</button></div></div>';
+      if (state.scheduled.length) {
+        h += '<div class="card"><h3>Coming up (from your plans)</h3>';
+        state.scheduled.slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; }).forEach(function (sc) {
+          h += '<div class="list-row"><div class="grow"><div class="title">' + esc(sc.task.title) + '</div><div class="sub">' + esc(prettyDate(sc.date)) + ' · ' + esc(sc.task.category) + (sc.task.tag ? ' · ' + esc(sc.task.tag) : '') + '</div></div>' +
+               '<button class="btn-icon" type="button" aria-label="Remove planned task" data-action="del-sched" data-id="' + esc(sc.id) + '">🗑</button></div>';
+        });
+        h += '</div>';
+      }
+      return h;
+    }
+
+    function adminTemplateHtml() {
+      var day = ui.templateDay;
+      var items = state.templates[day] || [];
+      var h = '<div class="card"><h3>Master Weekly Template</h3><p class="muted" style="margin-bottom: 12px;">These routines seed automatically each morning. Unfinished partial work carries over instead of being lost.</p>';
+      h += '<div class="day-chips">';
+      WEEK.forEach(function (d) {
+        h += '<button class="day-chip' + (d === day ? ' active' : '') + (d === todayDayId() ? ' today' : '') + '" type="button" data-action="pick-day" data-day="' + d + '">' + DAY_NAMES[d].slice(0, 3) + ' ' + (state.templates[d] || []).length + '</button>';
+      });
+      h += '</div><h3 style="font-size: 0.95rem;">' + DAY_NAMES[day] + '</h3>';
+      if (!items.some(function (t) { return t.category === ME_TIME; })) h += '<p class="warn-note">💗 No Me Time on ' + DAY_NAMES[day] + '. Guaranteed Me Time keeps the blocks from feeling like a cage.</p>';
+      if (!items.length) h += '<p class="muted">No routine items yet.</p>';
+      var mins = 0;
+      items.forEach(function (t) {
+        mins += t.est;
+        h += '<div class="list-row"><div class="grow"><div class="title"><span class="dot ' + t.context + '"></span>' + esc(t.title) + '</div>' +
+             '<div class="sub">' + esc(t.category) + ' · ' + t.est + 'm' + (t.subtasks.length ? ' · ' + t.subtasks.length + ' steps' : '') + (t.kind === 'plan' ? ' · plans tomorrow\'s “' + esc(t.followTitle) + '”' : '') + (t.kind === 'weekend' ? ' · 📌 carries over until done' : '') + '</div></div>' +
+             '<button class="btn btn-secondary" type="button" data-action="edit-tpl" data-id="' + esc(t.id) + '">Edit</button>' +
+             '<button class="btn-icon" type="button" aria-label="Delete routine item" data-action="del-tpl" data-id="' + esc(t.id) + '">🗑</button></div>';
+      });
+      if (items.length) h += '<p class="muted small" style="margin-top: 8px;">Planned: ' + fmtMins(mins) + '</p>';
+      h += '<div class="btn-row" style="margin-top: 12px;"><button class="btn btn-primary" type="button" data-action="new-tpl">+ Routine item</button>' +
+           '<button class="btn btn-secondary" type="button" data-action="copy-day">Copy day to…</button></div></div>';
+      return h;
+    }
+
+    function analyticsEntries() {
+      if (ui.analyticsRange === 'all') return state.log.slice();
+      var cutoff = daysAgoKey(parseInt(ui.analyticsRange, 10) - 1);
+      return state.log.filter(function (e) { return e.date >= cutoff; });
+    }
+    function devHtml(actual, est) {
+      var pct = est ? Math.round(((actual - est) / est) * 100) : 0;
+      var cls = pct > 15 ? 'over' : pct < -15 ? 'under' : '';
+      return '<span class="' + cls + '">' + (pct > 0 ? '+' : '') + pct + '%</span>';
+    }
+    function adminAnalyticsHtml() {
+      var entries = analyticsEntries();
+      var h = '<div class="card"><div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px;"><h3 style="margin: 0;">Habit Pattern Log</h3>' +
+              '<select class="input-field" style="width: auto; margin: 0; padding: 6px 8px;" data-action="range" aria-label="Range">' +
+              [['7', 'Last 7 days'], ['30', 'Last 30 days'], ['all', 'All time']].map(function (o) { return '<option value="' + o[0] + '"' + (ui.analyticsRange === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+              '</select></div>';
+      if (!entries.length) {
+        h += '<p class="muted">No sessions logged in this range yet. Pausing or completing a task records an entry here.</p></div>';
+        return h;
+      }
+      // Per-category summary: estimate vs actual on completed tasks.
+      var byCat = {};
+      entries.forEach(function (e) {
+        var c = byCat[e.category] || (byCat[e.category] = { mins: 0, done: 0, partial: 0, est: 0, actual: 0 });
+        c.mins += e.sessionMins;
+        if (e.event === 'done') { c.done++; c.est += e.est; c.actual += e.totalMins; } else c.partial++;
+      });
+      var tot = { mins: 0, done: 0, partial: 0, est: 0, actual: 0 };
+      h += '<div class="table-wrap"><table><thead><tr><th>Category</th><th class="num">Focus</th><th class="num">Done</th><th class="num">Part.</th><th class="num">Est→Act</th><th class="num">Δ</th></tr></thead><tbody>';
+      Object.keys(byCat).sort().forEach(function (k) {
+        var c = byCat[k];
+        ['mins', 'done', 'partial', 'est', 'actual'].forEach(function (f) { tot[f] += c[f]; });
+        h += '<tr><td' + (k === ME_TIME ? ' style="color: var(--accent-metime); font-weight: 600;"' : '') + '>' + esc(k) + '</td><td class="num">' + fmtMins(c.mins) + '</td><td class="num">' + c.done + '</td><td class="num">' + c.partial + '</td>' +
+             '<td class="num">' + (c.done ? c.est + '→' + c.actual : '—') + '</td><td class="num">' + (c.done ? devHtml(c.actual, c.est) : '—') + '</td></tr>';
+      });
+      h += '<tr style="font-weight: 700;"><td>Total</td><td class="num">' + fmtMins(tot.mins) + '</td><td class="num">' + tot.done + '</td><td class="num">' + tot.partial + '</td><td class="num">' + (tot.done ? tot.est + '→' + tot.actual : '—') + '</td><td class="num">' + (tot.done ? devHtml(tot.actual, tot.est) : '—') + '</td></tr>';
+      h += '</tbody></table></div><p class="muted small" style="margin-top: 8px;">Δ compares total time on completed tasks with their estimate. Red = took over 15% longer, green = over 15% quicker.</p></div>';
+
+      // Raw log
+      var rows = entries.slice().reverse().slice(0, 150);
+      h += '<div class="card"><h3>Sessions</h3><div class="table-wrap"><table><thead><tr><th>When</th><th>Task</th><th class="num">Session</th><th class="num">Total/Est</th></tr></thead><tbody>';
+      rows.forEach(function (e) {
+        var time = new Date(e.ts);
+        h += '<tr><td>' + esc(e.date.slice(5)) + '<div class="muted small">' + pad(time.getHours()) + ':' + pad(time.getMinutes()) + '</div></td>' +
+             '<td class="wrap">' + esc(e.title) + '<div class="muted small">' + esc(e.category) + (e.note ? ' · “' + esc(e.note) + '”' : '') + '</div></td>' +
+             '<td class="num">' + (e.event === 'done' ? '<span class="badge badge-done">Done</span>' : '<span class="badge badge-partial">' + (e.progress ? e.progress + '%' : 'Partial') + '</span>') + '<div style="margin-top: 4px;">' + e.sessionMins + 'm</div></td>' +
+             '<td class="num">' + e.totalMins + '/' + e.est + 'm' + (e.event === 'done' ? '<div class="small">' + devHtml(e.totalMins, e.est) + '</div>' : '') + '</td></tr>';
+      });
+      h += '</tbody></table></div>' + (entries.length > rows.length ? '<p class="muted small" style="margin-top: 8px;">Showing latest ' + rows.length + ' of ' + entries.length + '. Export CSV for everything.</p>' : '') +
+           '<div class="btn-row" style="margin-top: 12px;"><button class="btn btn-secondary" type="button" data-action="export-csv">Export CSV</button><button class="btn btn-danger" type="button" data-action="clear-log">Clear log</button></div></div>';
+      return h;
+    }
+
+    function adminChangesHtml() {
+      var f = ui.changesFilter || 'all';
+      var list = audit.entries.filter(function (e) { return f === 'all' || e.who === f; }).slice().reverse();
+      var h = '<div class="card"><div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;"><h3 style="margin: 0;">Change history</h3>' +
+        '<select class="input-field" style="width: auto; margin: 0; padding: 6px 8px;" data-action="changes-filter" aria-label="Filter">' +
+        [['all', 'Everyone'], ['user', 'User only'], ['admin', 'Admin only']].map(function (o) { return '<option value="' + o[0] + '"' + (f === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+        '</select></div><p class="muted small" style="margin-bottom: 8px;">Every task and label added, edited or deleted, and who did it. Stored separately from tasks and the habit log.</p>';
+      if (!list.length) h += '<p class="muted">No changes recorded yet.</p>';
+      list.slice(0, 200).forEach(function (e) {
+        var d = new Date(e.ts);
+        var isNew = e.who === 'user' && e.ts > audit.seenTs;
+        h += '<div class="list-row"><div class="grow"><div class="sub" style="margin: 0 0 3px;"><span class="who ' + e.who + '">' + e.who + '</span> ' +
+             esc(dateKey(d).slice(5)) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + (isNew ? ' · <span style="color:#fca5a5;">new</span>' : '') + '</div>' +
+             '<div style="font-size: 0.85rem; overflow-wrap: anywhere;">' + esc(e.summary) + '</div></div></div>';
+      });
+      h += '<div class="btn-row" style="margin-top: 12px;"><button class="btn btn-secondary" type="button" data-action="export-changes">Export as file</button>' +
+           (audit.entries.length ? '<button class="btn btn-danger" type="button" data-action="clear-changes">Clear history</button>' : '') + '</div></div>';
+      return h;
+    }
+    function adminSettingsHtml() {
+      return '<div class="card"><h3>Behaviour</h3>' +
+        '<div class="setting-row"><div><div style="font-weight: 600; font-size: 0.9rem;">Carry over partial work</div><div class="muted small">Unfinished tasks with progress roll into the next day.</div></div><input class="switch" type="checkbox" data-action="carry"' + (state.settings.carryOver ? ' checked' : '') + ' aria-label="Carry over partial work"></div>' +
+        '<div class="setting-row"><div><div style="font-weight: 600; font-size: 0.9rem;">Labels</div><div class="muted small">' + state.categories.map(esc).join(' · ') + '</div></div><button class="btn btn-secondary" type="button" data-action="edit-cats">Edit</button></div>' +
+        (syncOn() ? '' : '<div class="setting-row"><div><div style="font-weight: 600; font-size: 0.9rem;">Admin PIN</div><div class="muted small">' + (state.pin === '1234' ? 'Still the default (1234).' : 'Custom PIN set.') + ' A soft lock for focus, not real security.</div></div><button class="btn btn-secondary" type="button" data-action="change-pin">Change</button></div>') +
+        '</div>' +
+        '<div class="card"><h3>Sync</h3>' +
+        (syncOn()
+          ? '<div class="setting-row"><div><div style="font-weight: 600; font-size: 0.9rem;">Signed in as ' + esc(session.email) + '</div><div class="muted small">Last synced ' + agoText(syncMeta.lastOk) + (syncState.status === 'error' ? ' · ' + esc(syncState.error) : '') + '</div></div>' +
+            '<div class="btn-row"><button class="btn btn-secondary" type="button" data-action="sync-now">Sync now</button><button class="btn btn-secondary" type="button" data-action="sign-out">Sign out</button></div></div>'
+          : '<div class="setting-row"><div><div style="font-weight: 600; font-size: 0.9rem;">Sync is off</div><div class="muted small">Data stays on this device only.</div></div><button class="btn btn-primary" type="button" data-action="sign-in">Sign in</button></div>') +
+        '</div>' +
+        '<div class="card"><h3>Data</h3><p class="muted" style="margin-bottom: 12px;">' + (syncOn() ? 'Synced between the family\'s phones. Reset and Import change it on every phone.' : 'Everything is stored only on this device, in this browser.') + ' Export a backup before clearing browser data or moving to a hosted/installed copy.</p>' +
+        '<div class="btn-row"><button class="btn btn-secondary" type="button" data-action="export-json">Export backup</button><button class="btn btn-secondary" type="button" data-action="import-json">Import backup</button><button class="btn btn-danger" type="button" data-action="reset">Reset all</button></div></div>';
+    }
+
+    // ---------- Admin actions ----------
+    $('admin-tabs').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-tab]');
+      if (!b) return;
+      ui.adminTab = b.getAttribute('data-tab');
+      renderAdmin();
+    });
+
+    $('admin-view').addEventListener('change', function (e) {
+      var a = e.target.getAttribute('data-action');
+      if (a === 'range') { ui.analyticsRange = e.target.value; renderAdmin(); }
+      if (a === 'carry') { state.settings.carryOver = e.target.checked; logChange('setting', 'Turned carry-over ' + (e.target.checked ? 'on' : 'off')); save(); toast('Saved.'); }
+      if (a === 'changes-filter') { ui.changesFilter = e.target.value; renderAdmin(); }
+    });
+
+    $('admin-view').addEventListener('click', function (e) {
+      var el = e.target.closest('[data-action]');
+      if (!el || el.tagName === 'SELECT' || el.tagName === 'INPUT') return;
+      var a = el.getAttribute('data-action');
+      var id = el.getAttribute('data-id');
+      var day = ui.templateDay;
+      switch (a) {
+        case 'exit-admin': switchView('user'); break;
+        case 'new-task': openTaskEditor(null); break;
+        case 'edit-task': openTaskEditor(findTask(id)); break;
+        case 'del-task': { var dt = findTask(id); if (dt) deleteTaskConfirm(dt); break; }
+        case 'reseed': {
+          var n = seedToday(); save(); renderAdmin();
+          if (n) logChange('task.add', 'Pulled ' + n + ' missing routine item' + (n > 1 ? 's' : '') + ' into today');
+          toast(n ? 'Added ' + n + ' routine item' + (n > 1 ? 's' : '') + '.' : 'Today already has every routine item.');
+          break;
+        }
+        case 'del-sched':
+          state.scheduled.forEach(function (x) { if (x.id === id) logChange('plan.delete', 'Removed planned task ' + q(x.task.title) + ' for ' + prettyDate(x.date)); });
+          state.scheduled = state.scheduled.filter(function (x) { return x.id !== id; });
+          save(); renderAdmin();
+          break;
+        case 'pick-day': ui.templateDay = el.getAttribute('data-day'); renderAdmin(); break;
+        case 'new-tpl': openTplEditor(day, null); break;
+        case 'edit-tpl': openTplEditor(day, (state.templates[day] || []).filter(function (x) { return x.id === id; })[0]); break;
+        case 'del-tpl': {
+          var tp = (state.templates[day] || []).filter(function (x) { return x.id === id; })[0];
+          if (!tp) break;
+          confirmModal('Delete routine item?', 'Delete "' + tp.title + '" from ' + DAY_NAMES[day] + '? Today\'s list is not affected.', 'Delete', function () {
+            state.templates[day] = state.templates[day].filter(function (x) { return x.id !== id; });
+            logChange('routine.delete', 'Deleted ' + DAY_NAMES[day] + ' routine ' + q(tp.title));
+            save(); renderAdmin();
+          }, true);
+          break;
+        }
+        case 'copy-day': openCopyDay(day); break;
+        case 'export-csv': exportCsv(); break;
+        case 'sync-now': sync().then(function () { renderAdmin(); toast(syncState.status === 'ok' ? 'Synced.' : 'Couldn\'t sync right now.'); }); break;
+        case 'sign-out':
+          confirmModal('Sign out?', 'This phone will stop syncing. Its data stays here until you sign in again.', 'Sign out', function () {
+            signOut(); lsSet(MODE_KEY, 'local'); switchView('user'); toast('Signed out.');
+          }, true);
+          break;
+        case 'sign-in': showLogin(); break;
+        case 'export-changes': exportChanges(); break;
+        case 'clear-changes':
+          confirmModal('Clear change history?', 'This permanently deletes the record of task and label changes. Export it first if you want to keep it.', 'Clear', function () {
+            audit.entries = [];
+            saveAudit(); renderAdmin();
+          }, true);
+          break;
+        case 'clear-log':
+          confirmModal('Clear habit log?', 'This permanently deletes every logged session. Consider exporting a CSV first.', 'Clear log', function () {
+            state.log = [];
+            state.tasks.forEach(function (t) { t.lastDoneLogId = null; });
+            logChange('log.clear', 'Cleared the habit log');
+            save(); renderAdmin();
+          }, true);
+          break;
+        case 'edit-cats': openLabels(); break;
+        case 'change-pin': openChangePin(); break;
+        case 'export-json': exportJson(); break;
+        case 'import-json': $('import-file').value = ''; $('import-file').click(); break;
+        case 'reset':
+          confirmModal('Reset everything?', 'Deletes all tasks, routines, the habit log and your PIN, and restores the starter template. This cannot be undone.', 'Reset', function () {
+            state = defaultState();
+            rollover();
+            logChange('reset', 'Reset all app data to defaults');
+            save(); renderAdmin();
+            toast('Reset to defaults. PIN is 1234.');
+          }, true);
+          break;
+      }
+    });
+
+    // Today's tasks: used from both the Focus View (no PIN needed) and Admin → Today. Every change is recorded.
+    function openTaskEditor(t) {
+      var isAdmin = ui.view === 'admin';
+      openModal({
+        title: t ? 'Edit task' : 'Add a task for today',
+        body: taskFormBody(t, false, isAdmin) +
+              (t && t.templateId ? '<p class="muted small">Changes apply to today only' + (isAdmin ? '. Change the routine in the Weekly tab.' : '.') + '</p>' : '') +
+              (isAdmin ? '' : '<p class="muted small">Added, edited and deleted tasks are recorded in the change history for the admin.</p>'),
+        confirmText: t ? 'Save' : 'Add task',
+        confirmClass: isAdmin ? 'btn-primary' : 'btn-add',
+        extra: t ? { text: 'Delete', onClick: function () { deleteTaskConfirm(t); } } : null,
+        onConfirm: function (fd) {
+          var v = readTaskForm(fd);
+          if (typeof v === 'string') return v;
+          applyNewLabel(v);
+          if (t) {
+            var summary = describeTaskEdit(t, v);
+            // Keep the done state of steps whose titles survived the edit.
+            var prev = {};
+            t.subtasks.forEach(function (s) { prev[s.title] = s; });
+            var oldTitle = t.title;
+            t.title = v.title; t.context = v.context; t.category = v.category; t.est = v.est;
+            if (v.whys) t.whys = v.whys;
+            t.subtasks = v.subtasks.map(function (title) { return prev[title] ? { id: prev[title].id, title: title, done: prev[title].done } : { id: uid(), title: title, done: false }; });
+            if (summary !== 'no changes') logChange('task.edit', 'Edited task ' + q(oldTitle) + ': ' + summary);
+          } else {
+            var nt = blankTask({ title: v.title, context: v.context, category: v.category, est: v.est, subtasks: v.subtasks, whys: v.whys || [] });
+            state.tasks.push(nt);
+            ui.context = nt.context;
+            logChange('task.add', 'Added task ' + q(v.title) + ' (' + v.category + ', ' + v.context + ', ' + v.est + ' min' + (v.subtasks.length ? ', ' + v.subtasks.length + ' steps' : '') + ')');
+          }
+          save(); rerender();
+          toast(t ? 'Task updated.' : 'Task added.');
+        }
+      });
+    }
+    function deleteTaskConfirm(t) {
+      confirmModal('Delete task?', 'Delete "' + t.title + '" from today? Time already logged stays in the history.', 'Delete', function () {
+        state.tasks = state.tasks.filter(function (x) { return x.id !== t.id; });
+        logChange('task.delete', 'Deleted task ' + q(t.title) + ' (' + t.category + ', ' + (t.status === 'done' ? 'done' : progressPct(t) + '% done') + ', ' + t.timeSpent + ' min logged)');
+        save(); rerender();
+        toast('Task deleted.');
+      }, true);
+    }
+    function rerender() { if (ui.view === 'admin') renderAdmin(); else renderUser(); }
+
+    // Labels (categories): add, rename and delete from one screen. Me Time is always kept.
+    function openLabels() {
+      var cats = state.categories;
+      var rows = cats.map(function (c, i) {
+        if (c === ME_TIME) return '<div class="label-row"><input type="text" value="' + esc(c) + '" disabled><span class="muted small">Always kept</span></div>';
+        return '<div class="label-row"><input type="text" name="lab' + i + '" maxlength="40" value="' + esc(c) + '" aria-label="Label name">' +
+               '<label class="del-check"><input type="checkbox" name="del' + i + '">Delete</label></div>';
+      }).join('');
+      openModal({
+        title: 'Labels',
+        body: '<p class="modal-msg">Edit a name to rename it everywhere. Each label is an axis on the mastery chart (3 to 10).</p>' + rows +
+              (cats.length < 10 ? '<label>Add a label<input name="newLab" maxlength="40" autocomplete="off" placeholder="e.g. Health"></label>' : '') +
+              '<label>Tasks with a deleted label move to<select name="moveTo">' + cats.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('') + '</select></label>' +
+              (ui.view === 'admin' ? '' : '<p class="muted small">Label changes are recorded in the change history for the admin.</p>'),
+        onConfirm: function (fd) {
+          var next = [], renames = {}, deletes = [];
+          for (var i = 0; i < cats.length; i++) {
+            var c = cats[i];
+            if (c === ME_TIME) { next.push(c); continue; }
+            if (fd.get('del' + i)) { deletes.push(c); continue; }
+            var v = str(fd.get('lab' + i), 40);
+            if (!v) return 'A label can\'t be empty. Tick Delete to remove it.';
+            if (v !== c) renames[c] = v;
+            next.push(v);
+          }
+          var added = str(fd.get('newLab'), 40);
+          if (added) next.push(added);
+          var lower = next.map(function (x) { return x.toLowerCase(); });
+          if (lower.some(function (x, k) { return lower.indexOf(x) !== k; })) return 'Two labels have the same name.';
+          if (next.length < 3) return 'Keep at least 3 labels so the chart has a shape.';
+          if (next.length > 10) return 'Use 10 labels or fewer.';
+          var moveTo = String(fd.get('moveTo') || ME_TIME);
+          if (deletes.indexOf(moveTo) >= 0) return 'Pick a label that isn\'t being deleted for the moved tasks.';
+          moveTo = renames[moveTo] || moveTo;
+
+          var all = function (fn) {
+            state.tasks.forEach(fn);
+            state.scheduled.forEach(function (sc) { fn(sc.task); });
+            WEEK.forEach(function (d) { state.templates[d].forEach(fn); });
+          };
+          Object.keys(renames).forEach(function (from) {
+            var n = 0;
+            all(function (o) { if (o.category === from) { o.category = renames[from]; n++; } });
+            state.log.forEach(function (e) { if (e.category === from) e.category = renames[from]; });
+            logChange('label.rename', 'Renamed label ' + q(from) + ' → ' + q(renames[from]) + ' (' + n + ' task' + (n === 1 ? '' : 's') + ' and routine items updated)');
+          });
+          deletes.forEach(function (c) {
+            var n = 0;
+            all(function (o) { if (o.category === c) { o.category = moveTo; n++; } });
+            logChange('label.delete', 'Deleted label ' + q(c) + (n ? '; ' + n + ' item' + (n === 1 ? '' : 's') + ' moved to ' + q(moveTo) : ''));
+          });
+          if (added) logChange('label.add', 'Added label ' + q(added));
+          state.categories = next;
+          save(); rerender();
+          toast('Labels saved.');
+        }
+      });
+    }
+
+    function openTplEditor(day, tp) {
+      openModal({
+        title: (tp ? 'Edit' : 'New') + ' routine · ' + DAY_NAMES[day],
+        body: taskFormBody(tp, true),
+        onConfirm: function (fd) {
+          var v = readTaskForm(fd);
+          if (typeof v === 'string') return v;
+          applyNewLabel(v);
+          if (tp) {
+            var summary = describeTaskEdit(tp, v);
+            if (tp.kind !== v.kind) summary = (summary === 'no changes' ? '' : summary + '; ') + 'type ' + tp.kind + ' → ' + v.kind;
+            var oldTitle = tp.title;
+            tp.title = v.title; tp.context = v.context; tp.category = v.category; tp.est = v.est; tp.subtasks = v.subtasks; tp.kind = v.kind; tp.followTitle = v.followTitle; tp.whys = v.whys || [];
+            if (summary !== 'no changes') logChange('routine.edit', 'Edited ' + DAY_NAMES[day] + ' routine ' + q(oldTitle) + ': ' + summary);
+          } else {
+            state.templates[day].push({ id: uid(), title: v.title, context: v.context, category: v.category, est: v.est, subtasks: v.subtasks, kind: v.kind, followTitle: v.followTitle, followEst: 30, whys: v.whys || [] });
+            logChange('routine.add', 'Added ' + DAY_NAMES[day] + ' routine ' + q(v.title) + ' (' + v.category + ', ' + v.est + ' min)');
+          }
+          save(); renderAdmin();
+          if (day === todayDayId() && !tp) toast('Saved. Use Today → "Pull in missing routine items" to add it now.');
+        }
+      });
+    }
+
+    function openCopyDay(from) {
+      var boxes = WEEK.filter(function (d) { return d !== from; }).map(function (d) {
+        return '<label><input type="checkbox" name="days" value="' + d + '">' + DAY_NAMES[d].slice(0, 3) + '</label>';
+      }).join('');
+      openModal({
+        title: 'Copy ' + DAY_NAMES[from] + ' to…',
+        body: '<p class="modal-msg">Replaces the routine on the selected days with a copy of ' + DAY_NAMES[from] + '.</p><div class="check-grid">' + boxes + '</div>',
+        confirmText: 'Copy',
+        onConfirm: function (fd) {
+          var days = fd.getAll('days');
+          if (!days.length) return 'Pick at least one day.';
+          days.forEach(function (d) {
+            if (WEEK.indexOf(d) < 0) return;
+            state.templates[d] = state.templates[from].map(function (tp) {
+              return { id: uid(), title: tp.title, context: tp.context, category: tp.category, est: tp.est, subtasks: tp.subtasks.slice(), kind: tp.kind, followTitle: tp.followTitle, followEst: tp.followEst, whys: (tp.whys || []).slice() };
+            });
+          });
+          logChange('routine.copy', 'Copied ' + DAY_NAMES[from] + ' routine to ' + days.map(function (d) { return DAY_NAMES[d]; }).join(', '));
+          save(); renderAdmin();
+          toast('Copied to ' + days.length + ' day' + (days.length > 1 ? 's' : '') + '.');
+        }
+      });
+    }
+
+    function openChangePin() {
+      openModal({
+        title: 'Change Admin PIN',
+        body: '<label>Current PIN<input name="cur" type="password" inputmode="numeric" maxlength="8" autocomplete="off"></label>' +
+              '<label>New PIN (4–8 digits)<input name="next" type="password" inputmode="numeric" maxlength="8" autocomplete="off"></label>' +
+              '<label>Repeat new PIN<input name="again" type="password" inputmode="numeric" maxlength="8" autocomplete="off"></label>',
+        onConfirm: function (fd) {
+          if (String(fd.get('cur')) !== state.pin) return 'Current PIN is wrong.';
+          var next = String(fd.get('next') || '');
+          if (!/^\d{4,8}$/.test(next)) return 'New PIN must be 4 to 8 digits.';
+          if (next !== String(fd.get('again'))) return 'New PINs don\'t match.';
+          state.pin = next;
+          logChange('pin', 'Changed the admin PIN');
+          save(); renderAdmin();
+          toast('PIN updated.');
+        }
+      });
+    }
+
+    function download(filename, text, type) {
+      try {
+        var blob = new Blob([text], { type: type });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      } catch (e) { toast('Download not supported here.'); }
+    }
+    function exportJson() {
+      var data = JSON.parse(JSON.stringify(state));
+      data.changeHistory = audit.entries;
+      download('rise-backup-' + dateKey() + '.json', JSON.stringify(data, null, 2), 'application/json');
+    }
+    function exportChanges() {
+      function cell(v) { v = String(v == null ? '' : v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; }
+      var lines = ['date,time,who,action,change'];
+      audit.entries.forEach(function (e) {
+        var d = new Date(e.ts);
+        lines.push([dateKey(d), pad(d.getHours()) + ':' + pad(d.getMinutes()), e.who, e.action, e.summary].map(cell).join(','));
+      });
+      download('rise-changes-' + dateKey() + '.csv', lines.join('\n'), 'text/csv');
+    }
+    function exportCsv() {
+      var cols = ['date', 'time', 'title', 'category', 'context', 'event', 'progressPct', 'sessionMins', 'totalMins', 'est', 'deviationMins', 'note'];
+      function cell(v) { v = String(v == null ? '' : v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; }
+      var lines = [cols.join(',')];
+      analyticsEntries().forEach(function (e) {
+        var t = new Date(e.ts);
+        lines.push([e.date, pad(t.getHours()) + ':' + pad(t.getMinutes()), e.title, e.category, e.context, e.event, e.progress, e.sessionMins, e.totalMins, e.est,
+          e.event === 'done' ? e.totalMins - e.est : '', e.note].map(cell).join(','));
+      });
+      download('rise-log-' + dateKey() + '.csv', lines.join('\n'), 'text/csv');
+    }
+    $('import-file').addEventListener('change', function () {
+      var f = this.files && this.files[0];
+      if (!f) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        var parsed;
+        try { parsed = JSON.parse(String(reader.result)); } catch (e) { toast('That file isn\'t valid JSON.'); return; }
+        if (!parsed || typeof parsed !== 'object' || !parsed.templates) { toast('That doesn\'t look like a Focus backup.'); return; }
+        confirmModal('Import backup?', 'This replaces all current data on this device with the backup from the file.', 'Import', function () {
+          state = normalize(parsed);
+          if (Array.isArray(parsed.changeHistory)) {
+            try { localStorage.setItem(AUDIT_KEY, JSON.stringify({ seenTs: audit.seenTs, entries: parsed.changeHistory })); } catch (e) {}
+            audit = loadAudit();
+          }
+          rollover();
+          logChange('import', 'Imported a backup file');
+          save(); renderAdmin();
+          toast('Backup imported.');
+        }, true);
+      };
+      reader.readAsText(f);
+    });
+
+    // ---------- Boot ----------
+    // Synced phones roll the day over after pulling the latest data (inside sync), so they never clobber the other phone's progress.
+    if (!syncOn()) rollover();
+    newBenefits(); // new reason(s) every time the app is opened
+    persistLocal();
+    renderUser();
+    applyRoleUi();
+    if (syncOn()) sync();
+    else if (lsGet(MODE_KEY) !== 'local') showLogin();
+    window.addEventListener('online', function () { scheduleSync(300); });
+    setInterval(function () { if (document.visibilityState === 'visible') { sync(); setSyncStatus(syncState.status); } }, 60000);
+
+    // Live timer readout without re-rendering the whole list.
+    setInterval(function () {
+      var els = document.querySelectorAll('[data-timer-since]');
+      for (var i = 0; i < els.length; i++) els[i].textContent = fmtClock(Date.now() - Number(els[i].getAttribute('data-timer-since')));
+    }, 1000);
+    // Catch the day changing while the app stays open, or when it comes back from the background.
+    function checkDay() {
+      if (syncOn()) return; // synced phones roll over inside sync()
+      if (rollover()) { if (ui.view === 'admin') renderAdmin(); else renderUser(); toast('New day. Today\'s routine is ready.'); }
+    }
+    setInterval(checkDay, 60000);
+    var hiddenAt = 0;
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState !== 'visible') { hiddenAt = Date.now(); return; }
+      // Coming back after a minute or more counts as opening the app again.
+      if (hiddenAt && Date.now() - hiddenAt > 60000) newBenefits();
+      // Another tab may have changed the data (only reload when storage actually works).
+      if (!syncOn() && storageOk && !$('modal').classList.contains('active')) state = loadState();
+      checkDay();
+      if (syncOn()) sync();
+      if (!$('modal').classList.contains('active')) { if (ui.view === 'admin') renderAdmin(); else renderUser(); }
+    });
+    window.addEventListener('storage', function (e) {
+      if (e.key === AUDIT_KEY) { audit = loadAudit(); if (ui.view === 'admin') renderAdmin(); return; }
+      if (e.key !== STORAGE_KEY || $('modal').classList.contains('active')) return;
+      state = loadState();
+      if (ui.view === 'admin') renderAdmin(); else renderUser();
+    });
+
+    // Service worker only works over http(s) — not file:// — so skip it quietly there.
+    if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+      window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+    }
+  })();
+  </script>
+</body>
+</html>
