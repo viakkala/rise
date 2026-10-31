@@ -1226,6 +1226,12 @@
       closeModal();
     });
     $('modal-cancel').addEventListener('click', closeModal);
+    $('modal-form').addEventListener('click', function (e) {
+      if (!e.target.closest('[data-days-all]')) return;
+      var boxes = $('modal-form').querySelectorAll('input[name="days"]');
+      var allOn = Array.prototype.every.call(boxes, function (b) { return b.checked; });
+      Array.prototype.forEach.call(boxes, function (b) { b.checked = !allOn; });
+    });
     $('modal-extra').addEventListener('click', function () {
       var fn = modalExtra && modalExtra.onClick;
       closeModal();
@@ -2164,8 +2170,13 @@
 
     function openTplEditor(day, tp) {
       openModal({
-        title: (tp ? 'Edit' : 'New') + ' routine · ' + DAY_NAMES[day],
-        body: taskFormBody(tp, true),
+        title: tp ? 'Edit routine · ' + DAY_NAMES[day] : 'New routine item',
+        body: taskFormBody(tp, true) + (tp ? '' :
+          '<div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px;">Repeat on' +
+          '<button class="btn-link" type="button" data-days-all>Every day</button></div>' +
+          '<div class="check-grid">' + WEEK.map(function (d) {
+            return '<label><input type="checkbox" name="days" value="' + d + '"' + (d === day ? ' checked' : '') + '>' + DAY_NAMES[d].slice(0, 3) + '</label>';
+          }).join('') + '</div>'),
         onConfirm: function (fd) {
           var v = readTaskForm(fd);
           if (typeof v === 'string') return v;
@@ -2177,11 +2188,19 @@
             tp.title = v.title; tp.context = v.context; tp.category = v.category; tp.est = v.est; tp.subtasks = v.subtasks; tp.kind = v.kind; tp.followTitle = v.followTitle; tp.whys = v.whys || [];
             if (summary !== 'no changes') logChange('routine.edit', 'Edited ' + DAY_NAMES[day] + ' routine ' + q(oldTitle) + ': ' + summary);
           } else {
-            state.templates[day].push({ id: uid(), title: v.title, context: v.context, category: v.category, est: v.est, subtasks: v.subtasks, kind: v.kind, followTitle: v.followTitle, followEst: 30, whys: v.whys || [] });
-            logChange('routine.add', 'Added ' + DAY_NAMES[day] + ' routine ' + q(v.title) + ' (' + v.category + ', ' + v.est + ' min)');
+            var days = fd.getAll('days').filter(function (d) { return WEEK.indexOf(d) >= 0; });
+            if (!days.length) return 'Pick at least one day.';
+            days.forEach(function (d) {
+              var item = { id: uid(), title: v.title, context: v.context, category: v.category, est: v.est, subtasks: v.subtasks.slice(), kind: v.kind, followTitle: v.followTitle, followEst: 30, whys: (v.whys || []).slice() };
+              state.templates[d].push(item);
+              // Added for today too, so it shows up right away.
+              if (d === todayDayId()) state.tasks.push(taskFromTemplate(item));
+            });
+            var dayText = days.length === 7 ? 'every day' : days.map(function (d) { return DAY_NAMES[d].slice(0, 3); }).join(', ');
+            logChange('routine.add', 'Added routine ' + q(v.title) + ' on ' + dayText + ' (' + v.category + ', ' + v.est + ' min)');
+            toast('Added to ' + dayText + (days.indexOf(todayDayId()) >= 0 ? ', including today.' : '.'));
           }
           save(); renderAdmin();
-          if (day === todayDayId() && !tp) toast('Saved. Use Today → "Pull in missing routine items" to add it now.');
         }
       });
     }
