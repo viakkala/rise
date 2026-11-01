@@ -253,6 +253,16 @@
     .login-box input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: #fff; margin-top: 4px; font-size: 16px; }
     .login-box .btn { width: 100%; padding: 12px; font-size: 0.95rem; margin-top: 4px; }
     .login-err { color: #fca5a5; font-size: 0.85rem; min-height: 1.2em; margin: 4px 0 8px; }
+    .away-banner { background: rgba(59,130,246,0.12); border: 1px solid #1e40af; color: #bfdbfe; border-radius: 8px; padding: 10px 12px; font-size: 0.85rem; margin-bottom: 12px; }
+    .badge-skip { background: transparent; border: 1px solid #64748b; color: var(--text-muted); }
+    .task-item.skipped { opacity: 0.6; }
+    .task-item.skipped .task-title { color: var(--text-muted); }
+    .btn-skip { background: none; border: none; color: var(--text-muted); font-size: 0.72rem; font-weight: 600; padding: 2px 4px; margin-top: -3px; }
+    .btn-skip:hover { color: #fff; }
+    .plan-row { cursor: pointer; }
+    .plan-row input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--accent-admin); }
+    .plan-row.off .title { color: var(--text-muted); text-decoration: line-through; }
+    .day-chip .mark { color: var(--accent-warn); }
     .toast {
       position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
       background: #f8fafc; color: #0f172a; padding: 10px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;
@@ -315,6 +325,7 @@
     </div>
     <div class="admin-tabs" id="admin-tabs">
       <button class="admin-tab active" data-tab="today" type="button">Today</button>
+      <button class="admin-tab" data-tab="plan" type="button">Plan ahead</button>
       <button class="admin-tab" data-tab="template" type="button">Weekly</button>
       <button class="admin-tab" data-tab="analytics" type="button">Analytics</button>
       <button class="admin-tab" data-tab="changes" type="button">Changes</button>
@@ -555,6 +566,8 @@
         scheduled: [],
         log: [],
         lastSeedDate: null,
+        dayPlans: {},
+        held: [],
         why: { bag: [], current: [], seen: 0, taskId: null, taskText: '' }
       };
     }
@@ -580,7 +593,7 @@
     }
     function normTask(t) {
       if (!t || typeof t !== 'object' || !str(t.title)) return null;
-      var status = ['active', 'partial', 'done'].indexOf(t.status) >= 0 ? t.status : 'active';
+      var status = ['active', 'partial', 'done', 'skipped'].indexOf(t.status) >= 0 ? t.status : 'active';
       return {
         id: str(String(t.id || ''), 40) || uid(),
         templateId: t.templateId ? str(String(t.templateId), 40) : null,
@@ -601,6 +614,7 @@
         whys: (Array.isArray(t.whys) ? t.whys.map(function (w) { return str(w, 200); }).filter(Boolean).slice(0, 5) : []),
         date: /^\d{4}-\d{2}-\d{2}$/.test(t.date) ? t.date : null,
         tag: str(t.tag, 30),
+        skipReason: t.skipReason === 'covered' || t.skipReason === 'not-needed' ? t.skipReason : null,
         replaces: t.replaces ? str(t.replaces, 80) : null,
         createdIds: Array.isArray(t.createdIds) ? t.createdIds.map(String).slice(0, 40) : [],
         restore: t.restore && typeof t.restore === 'object' && str(t.restore.title) ? {
@@ -610,6 +624,16 @@
         subtasks: (Array.isArray(t.subtasks) ? t.subtasks : []).filter(function (s) { return s && str(s.title); }).slice(0, 30).map(function (s) {
           return { id: str(String(s.id || ''), 40) || uid(), title: str(s.title, 120), done: !!s.done };
         })
+      };
+    }
+    // Per-date exceptions to the weekly routine: items dropped for that date, and away/vacation days.
+    function normPlan(p) {
+      if (!p || typeof p !== 'object') return null;
+      var ids = function (a) { return (Array.isArray(a) ? a : []).map(function (x) { return str(String(x), 40); }).filter(Boolean).slice(0, 60); };
+      return {
+        skip: ids(p.skip), keep: ids(p.keep), away: !!p.away,
+        awayKeep: (Array.isArray(p.awayKeep) ? p.awayKeep : []).map(function (c) { return str(c, 40); }).filter(Boolean).slice(0, 10),
+        awayId: str(p.awayId, 40)
       };
     }
     function normLog(e) {
@@ -658,6 +682,9 @@
       }).filter(Boolean).slice(0, 100) : [];
       s.log = Array.isArray(raw.log) ? raw.log.map(normLog).filter(Boolean).slice(-MAX_LOG) : [];
       s.lastSeedDate = typeof raw.lastSeedDate === 'string' ? raw.lastSeedDate : null;
+      s.dayPlans = {};
+      if (raw.dayPlans && typeof raw.dayPlans === 'object') Object.keys(raw.dayPlans).forEach(function (k) { var pl = normPlan(raw.dayPlans[k]); if (/^\d{4}-\d{2}-\d{2}$/.test(k) && pl) s.dayPlans[k] = pl; });
+      s.held = Array.isArray(raw.held) ? raw.held.map(normTask).filter(Boolean) : [];
       var w = raw.why && typeof raw.why === 'object' ? raw.why : {};
       var validIdx = function (a) { return (Array.isArray(a) ? a : []).filter(function (i) { return typeof i === 'number' && i >= 0 && i < BENEFITS.length && i % 1 === 0; }); };
       s.why = { bag: validIdx(w.bag), current: validIdx(w.current).slice(0, 1), seen: clampInt(w.seen, 0, 1e6, 0), taskId: w.taskId ? String(w.taskId) : null, taskText: str(w.taskText, 200) };
@@ -777,6 +804,8 @@
       state.scheduled.forEach(function (sc) { var n = normTask(sc.task); if (n) m['sched__' + docId(sc.id)] = { id: sc.id, date: sc.date, task: n }; });
       state.log.forEach(function (e) { var n = normLog(e); if (n) m['log__' + docId(e.id)] = n; });
       WEEK.forEach(function (d) { m['tpl__' + d] = { day: d, items: (state.templates[d] || []).map(normTpl).filter(Boolean) }; });
+      Object.keys(state.dayPlans).forEach(function (d) { m['plan__' + d] = normPlan(state.dayPlans[d]); });
+      state.held.forEach(function (t) { var n = normTask(t); if (n) m['held__' + docId(t.id)] = n; });
       m['meta__config'] = { categories: state.categories, settings: state.settings, lastSeedDate: state.lastSeedDate };
       audit.entries.forEach(function (e) { m['changes__' + docId(e.id)] = { id: e.id, ts: e.ts, who: e.who, action: e.action, summary: e.summary }; });
       return m;
@@ -800,6 +829,8 @@
           if (typeof obj.lastSeedDate === 'string') state.lastSeedDate = obj.lastSeedDate;
         }
       }
+      else if (col === 'plan') { if (/^\d{4}-\d{2}-\d{2}$/.test(id)) { var pl = obj && normPlan(obj); if (pl) state.dayPlans[id] = pl; else delete state.dayPlans[id]; } }
+      else if (col === 'held') upsertById(state.held, id, obj && normTask(obj));
       else if (col === 'changes') upsertById(audit.entries, id, obj && typeof obj.ts === 'number' && typeof obj.summary === 'string' ?
         { id: String(obj.id), ts: obj.ts, who: obj.who === 'admin' ? 'admin' : 'user', action: str(obj.action, 40), summary: str(obj.summary, 400) } : null);
     }
@@ -935,7 +966,7 @@
         if ($('modal').classList.contains('active')) { syncState.again = true; return; }
         if (first && docs.length) {
           // New phone joining: take the family's data from the cloud.
-          state.tasks = []; state.scheduled = []; state.log = []; audit.entries = [];
+          state.tasks = []; state.scheduled = []; state.log = []; audit.entries = []; state.dayPlans = {}; state.held = [];
           WEEK.forEach(function (d) { state.templates[d] = []; });
           syncMeta.synced = {};
           applyDocs(docs, true);
@@ -1057,6 +1088,13 @@
     function hasProgress(t) { return t.timeSpent > 0 || (t.progress || 0) > 0 || subCounts(t).done > 0 || !!t.runningSince; }
     function runningMins(t) { return t.runningSince ? Math.max(0, Math.round((Date.now() - t.runningSince) / 60000)) : 0; }
 
+    function planFor(date, st) { st = st || state; return (st.dayPlans && st.dayPlans[date]) || null; }
+    function awayBlocks(category, plan) { return !!(plan && plan.away && plan.awayKeep.indexOf(category) < 0); }
+    function isSkipped(tp, plan) {
+      if (!plan) return false;
+      if (plan.skip.indexOf(tp.id) >= 0) return true;
+      return awayBlocks(tp.category, plan) && plan.keep.indexOf(tp.id) < 0;
+    }
     function blankTask(f) {
       return {
         id: uid(), templateId: f.templateId || null, title: f.title, context: f.context || 'offline', category: f.category || ME_TIME, est: f.est || 30,
@@ -1080,9 +1118,10 @@
         // A carried-over or already-present copy (e.g. yesterday's unfinished "Read") stands in for today's.
         titleKeys[t.title.toLowerCase() + '|' + t.category] = true;
       });
-      var added = 0;
+      var added = 0, plan = planFor(dateKey(), st);
       (st.templates[todayDayId()] || []).forEach(function (tp) {
         if (existing[tp.id] || titleKeys[tp.title.toLowerCase() + '|' + tp.category]) return;
+        if (isSkipped(tp, plan)) return; // dropped for today in Plan ahead
         st.tasks.push(taskFromTemplate(tp));
         added++;
       });
@@ -1113,10 +1152,15 @@
       return task.id;
     }
     function injectScheduled() {
-      var today = dateKey(), keep = [], n = 0;
+      var today = dateKey(), keep = [], n = 0, plan = planFor(today);
+      var skippedTitles = (state.templates[todayDayId()] || []).filter(function (tp) { return isSkipped(tp, plan); }).map(function (tp) { return tp.title.toLowerCase(); });
       state.scheduled.forEach(function (sc) {
         if (sc.date > today) keep.push(sc);
-        else if (sc.date === today) { placeTask(sc.task); n++; }
+        else if (sc.date === today) {
+          // A plan made earlier for a day that is now away, or whose routine item was dropped, isn't added.
+          if (awayBlocks(sc.task.category, plan) || (sc.task.replaces && skippedTitles.indexOf(sc.task.replaces.toLowerCase()) >= 0)) return;
+          placeTask(sc.task); n++;
+        }
         // Plans for a day that already passed are dropped.
       });
       state.scheduled = keep;
@@ -1135,7 +1179,7 @@
     function rollover() {
       var today = dateKey();
       if (state.lastSeedDate === today) return false;
-      var kept = [];
+      var kept = [], plan = planFor(today);
       state.tasks.forEach(function (t) {
         if (t.runningSince) {
           // A timer left running overnight: credit it, capped so a forgotten timer doesn't wreck the stats.
@@ -1144,14 +1188,20 @@
           if (mins > 0) { t.timeSpent += mins; addLog(t, 'partial', mins, 'Timer auto-stopped at day change'); }
         }
         // The weekend family plan always carries over until it's done; other tasks only when partly done.
-        if (t.status !== 'done' && (t.kind === 'weekend' || (state.settings.carryOver && hasProgress(t)))) {
+        if (t.status !== 'done' && t.status !== 'skipped' && (t.kind === 'weekend' || (state.settings.carryOver && hasProgress(t)))) {
           t.carried = true;
           t.status = hasProgress(t) ? 'partial' : 'active';
           t.lastDoneLogId = null;
-          kept.push(t);
+          // While away, unfinished work in paused labels waits on the side instead of piling up.
+          if (awayBlocks(t.category, plan)) state.held.push(t); else kept.push(t);
         }
       });
+      state.held = state.held.filter(function (t) {
+        if (awayBlocks(t.category, plan)) return true;
+        kept.push(t); return false;
+      });
       state.tasks = kept;
+      Object.keys(state.dayPlans).forEach(function (d) { if (d < today) delete state.dayPlans[d]; });
       seedToday();
       injectScheduled();
       state.lastSeedDate = today;
@@ -1317,8 +1367,9 @@
 
     // ---------- User view rendering ----------
     function renderSummary() {
-      var total = state.tasks.length, done = 0, mins = 0, meTotal = 0, meDone = 0;
-      state.tasks.forEach(function (t) {
+      var active = state.tasks.filter(function (t) { return t.status !== 'skipped'; });
+      var total = active.length, done = 0, mins = 0, meTotal = 0, meDone = 0;
+      active.forEach(function (t) {
         if (t.status === 'done') done++;
         if (t.category === ME_TIME) { meTotal++; if (t.status === 'done') meDone++; }
       });
@@ -1334,17 +1385,20 @@
       var c = subCounts(t);
       var pct = progressPct(t);
       var isMe = t.category === ME_TIME;
-      var done = t.status === 'done';
+      var skippedT = t.status === 'skipped';
+      var done = t.status === 'done' || skippedT;
       var id = esc(t.id);
       var pinned = t.kind === 'weekend' && !done;
       var h = '<div class="task-item' + (isMe ? ' metime' : '') + (done ? ' done' : '') + (pinned ? ' pinned' : '') + '" data-card="' + id + '">';
       if (pinned) h += '<span class="pin-note">📌 Do this before the weekend' + (t.carried ? ' · still waiting' : '') + '</span>';
       h += '<div class="task-header"><span class="task-title">' + esc(t.title) + '</span><span class="badges">';
-      if (done) h += '<span class="badge badge-done">Done</span>';
+      if (skippedT) h += '<span class="badge badge-skip">' + (t.skipReason === 'covered' ? 'Covered by someone' : 'Not needed') + '</span>';
+      else if (done) h += '<span class="badge badge-done">Done</span>';
       else if (t.carried) h += '<span class="badge badge-carried">Carried over</span>';
       else if (t.status === 'partial') h += '<span class="badge badge-partial">' + pct + '%</span>';
       if (t.tag) h += '<span class="badge badge-family">' + esc(t.tag) + '</span>';
       h += '<span class="badge' + (isMe ? ' badge-metime' : '') + '">' + esc(t.category) + '</span>' +
+           (done ? '' : '<button class="btn-skip" type="button" data-action="skip" data-task="' + id + '">Skip</button>') +
            '<button class="btn-edit" type="button" aria-label="Edit or delete task" data-action="edit" data-task="' + id + '">✎</button></span></div>';
 
       h += '<div class="task-meta"><span>' + (t.runningSince ? '<span class="timer-live" data-timer-since="' + t.runningSince + '">' + fmtClock(Date.now() - t.runningSince) + '</span>' : (pct ? pct + '% done' : 'Not started')) + '</span>';
@@ -1365,7 +1419,9 @@
       }
 
       h += '<div class="task-actions">';
-      if (done) {
+      if (skippedT) {
+        h += '<button class="btn-action btn-subtask" type="button" data-action="unskip" data-task="' + id + '">Undo skip</button>';
+      } else if (done) {
         h += '<button class="btn-action btn-subtask" type="button" data-action="reopen" data-task="' + id + '">Reopen</button>';
       } else {
         h += '<button class="btn-action btn-timer' + (t.runningSince ? ' running' : '') + '" type="button" data-action="timer" data-task="' + id + '">' + (t.runningSince ? '■ Stop' : '▶ Start') + '</button>';
@@ -1381,7 +1437,7 @@
     function renderTasks() {
       ['online', 'offline'].forEach(function (ctx) {
         var btn = $('btn-' + ctx);
-        var open = state.tasks.filter(function (t) { return t.context === ctx && t.status !== 'done'; }).length;
+        var open = state.tasks.filter(function (t) { return t.context === ctx && t.status !== 'done' && t.status !== 'skipped'; }).length;
         btn.classList.toggle('active', ui.context === ctx);
         btn.setAttribute('aria-pressed', ui.context === ctx ? 'true' : 'false');
         btn.innerHTML = (ctx === 'online' ? '🌐 Online' : '🏡 Offline') + '<span class="count-pill">' + open + '</span>';
@@ -1389,12 +1445,14 @@
       $('tasks-heading').textContent = DAY_NAMES[todayDayId()] + "'s Tasks";
 
       var hasMe = state.tasks.some(function (t) { return t.category === ME_TIME; });
-      $('metime-nudge').innerHTML = hasMe ? '' :
-        '<div class="metime-nudge"><p>No Me Time planned today. You\'ve earned some.</p><button class="btn btn-metime" type="button" data-action="add-metime">+ Add</button></div>';
+      var todayPlan = planFor(dateKey());
+      $('metime-nudge').innerHTML = (todayPlan && todayPlan.away ? '<div class="away-banner">✈ Away today. Only ' + esc(todayPlan.awayKeep.join(' and ') || 'nothing') + ' ' + (todayPlan.awayKeep.length > 1 ? 'are' : 'is') + ' on the list. Enjoy the break.</div>' : '') + (hasMe ? '' :
+        '<div class="metime-nudge"><p>No Me Time planned today. You\'ve earned some.</p><button class="btn btn-metime" type="button" data-action="add-metime">+ Add</button></div>');
 
       var list = state.tasks.filter(function (t) { return t.context === ui.context; });
-      var open = list.filter(function (t) { return t.status !== 'done'; });
+      var open = list.filter(function (t) { return t.status !== 'done' && t.status !== 'skipped'; });
       var closed = list.filter(function (t) { return t.status === 'done'; });
+      var skipped = list.filter(function (t) { return t.status === 'skipped'; });
       // Weekend plan pinned first, then Me Time, then partial work, then the rest.
       function rank(t) { return (t.kind === 'weekend' ? 0 : 10) + (t.category === ME_TIME ? 0 : 2) + (t.status === 'partial' ? 0 : 1); }
       open.sort(function (a, b) { return rank(a) - rank(b); });
@@ -1410,10 +1468,17 @@
           closed.forEach(function (t) { html += taskCardHtml(t); });
           html += '</details>';
         }
+        if (skipped.length) {
+          html += '<details class="completed"' + (ui.skippedOpen ? ' open' : '') + ' id="skipped-details"><summary>Skipped (' + skipped.length + ')</summary>';
+          skipped.forEach(function (t) { html += taskCardHtml(t); });
+          html += '</details>';
+        }
       }
       $('task-list-container').innerHTML = html;
       var det = $('completed-details');
       if (det) det.addEventListener('toggle', function () { ui.completedOpen = det.open; });
+      var sdet = $('skipped-details');
+      if (sdet) sdet.addEventListener('toggle', function () { ui.skippedOpen = sdet.open; });
     }
 
     function renderRadar() {
@@ -1421,7 +1486,7 @@
       var n = cats.length;
       // Series A: progress today per category (avg % across that category's tasks).
       var prog = cats.map(function (c) {
-        var ts = state.tasks.filter(function (t) { return t.category === c; });
+        var ts = state.tasks.filter(function (t) { return t.category === c && t.status !== 'skipped'; });
         if (!ts.length) return 0;
         return ts.reduce(function (a, t) { return a + progressPct(t); }, 0) / ts.length;
       });
@@ -1555,6 +1620,13 @@
       if (action === 'pause') return openPause(t);
       if (action === 'complete') return quickComplete(t);
       if (action === 'reopen') return reopenTask(t);
+      if (action === 'skip') return openSkip(t);
+      if (action === 'unskip') {
+        t.status = hasProgress(t) ? 'partial' : 'active'; t.skipReason = null;
+        logChange('task.unskip', 'Un-skipped ' + q(t.title));
+        save(); renderUser(); toast('Back on the list.');
+        return;
+      }
     });
 
     function toggleTimer(t) {
@@ -1743,6 +1815,29 @@
       t.createdIds = [];
     }
 
+    // "Skip today": someone else covered it, or it's not needed. Not a failure, not counted in progress.
+    function openSkip(t) {
+      openModal({
+        title: 'Skip for today?',
+        body: '<p class="modal-msg">' + esc(t.title) + '</p>' +
+              '<div class="choice-row" role="radiogroup" aria-label="Reason">' +
+              '<label><input type="radio" name="reason" value="covered" checked><span>Someone else<small>covered it</small></span></label>' +
+              '<label><input type="radio" name="reason" value="not-needed"><span>Not needed<small>today</small></span></label></div>' +
+              '<label>Note (optional)<input name="note" maxlength="100" autocomplete="off" placeholder="e.g. Amma cooked dinner"></label>',
+        confirmText: 'Skip',
+        confirmClass: 'btn-secondary',
+        onConfirm: function (fd) {
+          stopTimer(t, 'Stopped when skipped');
+          t.status = 'skipped';
+          t.skipReason = fd.get('reason') === 'not-needed' ? 'not-needed' : 'covered';
+          var note = str(fd.get('note'), 100);
+          logChange('task.skip', 'Skipped ' + q(t.title) + ' today: ' + (t.skipReason === 'covered' ? 'covered by someone else' : 'not needed') + (note ? ' (' + note + ')' : ''));
+          save(); renderUser();
+          toast(t.skipReason === 'covered' ? 'Nice, teamwork. Skipped for today.' : 'Skipped for today.');
+        }
+      });
+    }
+
     function reopenTask(t) {
       undoCreated(t);
       // Undo the completion: drop its log entry and the minutes that came with it.
@@ -1825,6 +1920,7 @@
       if (ui.adminTab === 'today') html = adminTodayHtml();
       else if (ui.adminTab === 'template') html = adminTemplateHtml();
       else if (ui.adminTab === 'analytics') html = adminAnalyticsHtml();
+      else if (ui.adminTab === 'plan') html = adminPlanHtml();
       else if (ui.adminTab === 'changes') { html = adminChangesHtml(); audit.seenTs = Date.now(); saveAudit(); }
       else html = adminSettingsHtml();
       var unseen = audit.entries.filter(function (e) { return e.who === 'user' && e.ts > audit.seenTs; }).length;
@@ -1938,6 +2034,100 @@
       return h;
     }
 
+    function getPlan(d) {
+      if (!state.dayPlans[d]) state.dayPlans[d] = { skip: [], keep: [], away: false, awayKeep: [], awayId: '' };
+      return state.dayPlans[d];
+    }
+    function cleanPlan(d) {
+      var p = state.dayPlans[d];
+      if (p && !p.skip.length && !p.keep.length && !p.away) delete state.dayPlans[d];
+    }
+    function dayIdOf(d) { var a = d.split('-'); return JS_DAY[new Date(+a[0], +a[1] - 1, +a[2]).getDay()]; }
+    function shortDate(d) { var a = d.split('-'); return new Date(+a[0], +a[1] - 1, +a[2]).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }); }
+    // A plan change for today takes effect right away: dropped items leave the list (if untouched), re-ticked ones come back.
+    function applyTodayPlan() {
+      var today = dateKey(), plan = planFor(today), tpls = state.templates[todayDayId()] || [];
+      var byId = {}; tpls.forEach(function (tp) { byId[tp.id] = tp; });
+      state.tasks = state.tasks.filter(function (t) {
+        if (t.status !== 'active' || hasProgress(t)) return true;
+        var tp = t.templateId && byId[t.templateId];
+        if (tp ? isSkipped(tp, plan) : awayBlocks(t.category, plan) && !t.carried) return false;
+        if (t.carried && awayBlocks(t.category, plan)) { state.held.push(t); return false; }
+        return true;
+      });
+      state.held = state.held.filter(function (t) { if (awayBlocks(t.category, plan)) return true; state.tasks.push(t); return false; });
+      seedToday();
+    }
+    function adminPlanHtml() {
+      var today = dateKey();
+      if (!ui.planDate || ui.planDate < today) ui.planDate = addDays(today, 1);
+      var d = ui.planDate, plan = planFor(d), dayId = dayIdOf(d), items = state.templates[dayId] || [];
+      var h = '<div class="card"><h3>Plan ahead</h3><p class="muted" style="margin-bottom: 12px;">Untick what isn\'t needed on a particular date. The weekly routine stays as it is.</p><div class="day-chips">';
+      for (var i = 0; i < 14; i++) {
+        var dd = addDays(today, i), pl = planFor(dd);
+        var label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : shortDate(dd).split(',')[0] + ' ' + +dd.slice(8);
+        h += '<button class="day-chip' + (dd === d ? ' active' : '') + '" type="button" data-action="plan-pick" data-day="' + dd + '">' + esc(label) +
+             (pl && pl.away ? ' <span class="mark">✈</span>' : pl ? ' <span class="mark">•</span>' : '') + '</button>';
+      }
+      h += '</div><h3 style="font-size: 0.95rem;">' + esc(prettyDate(d)) + '</h3>';
+      if (plan && plan.away) h += '<p class="warn-note" style="color: #93c5fd;">✈ Away. Keeping ' + esc(plan.awayKeep.join(', ') || 'nothing') + '. Tick anything else you still want.</p>';
+      if (!items.length) h += '<p class="muted">No routine items on ' + DAY_NAMES[dayId] + '.</p>';
+      var on = 0;
+      items.forEach(function (tp) {
+        var off = isSkipped(tp, plan); if (!off) on++;
+        h += '<label class="list-row plan-row' + (off ? ' off' : '') + '"><input type="checkbox" data-action="plan-toggle" data-id="' + esc(tp.id) + '"' + (off ? '' : ' checked') + '>' +
+             '<div class="grow"><div class="title">' + esc(tp.title) + '</div><div class="sub">' + esc(tp.category) + ' · ' + tp.est + 'm' + (off && awayBlocks(tp.category, plan) && plan.skip.indexOf(tp.id) < 0 ? ' · paused while away' : '') + '</div></div></label>';
+      });
+      if (items.length) h += '<p class="muted small" style="margin-top: 8px;">' + on + ' of ' + items.length + ' routine items on this day.</p>';
+      h += '<div class="btn-row" style="margin-top: 12px;"><button class="btn btn-secondary" type="button" data-action="plan-help">🤝 Help at home</button>' +
+           (plan ? '<button class="btn btn-secondary" type="button" data-action="plan-reset">Back to normal</button>' : '') + '</div></div>';
+
+      // Away periods
+      var groups = {};
+      Object.keys(state.dayPlans).sort().forEach(function (k) {
+        var p = state.dayPlans[k]; if (!p.away) return;
+        var g = groups[p.awayId || k] || (groups[p.awayId || k] = { from: k, to: k, keep: p.awayKeep });
+        g.to = k;
+      });
+      h += '<div class="card"><h3>Away / vacation</h3>';
+      var keys = Object.keys(groups);
+      if (!keys.length) h += '<p class="muted" style="margin-bottom: 12px;">No trips planned. While away, only the labels you keep stay on the list, and unfinished work waits until you\'re back.</p>';
+      keys.forEach(function (k) {
+        var g = groups[k];
+        h += '<div class="list-row"><div class="grow"><div class="title">✈ ' + esc(shortDate(g.from)) + (g.to !== g.from ? ' → ' + esc(shortDate(g.to)) : '') + '</div><div class="sub">Keeping ' + esc(g.keep.join(', ') || 'nothing') + '</div></div>' +
+             '<button class="btn btn-secondary" type="button" data-action="away-end" data-id="' + esc(k) + '">Cancel</button></div>';
+      });
+      h += '<div class="btn-row" style="margin-top: 12px;"><button class="btn btn-primary" type="button" data-action="away-new">+ Set away dates</button></div></div>';
+      return h;
+    }
+    function openAwayEditor() {
+      var today = dateKey(), from = ui.planDate || addDays(today, 1);
+      var defKeep = ['Self-care', ME_TIME];
+      openModal({
+        title: 'Away / vacation',
+        body: '<div class="row2"><label>From<input name="from" type="date" min="' + today + '" value="' + from + '"></label>' +
+              '<label>To<input name="to" type="date" min="' + today + '" value="' + addDays(from, 3) + '"></label></div>' +
+              '<div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px;">Keep on the list</div><div class="check-grid" style="grid-template-columns: repeat(2, 1fr);">' +
+              state.categories.map(function (c) { return '<label><input type="checkbox" name="keep" value="' + esc(c) + '"' + (defKeep.indexOf(c) >= 0 ? ' checked' : '') + '>' + esc(c) + '</label>'; }).join('') + '</div>' +
+              '<p class="muted small">Everything else pauses on those days, including plans made earlier for them. Unfinished work waits and comes back afterwards.</p>',
+        confirmText: 'Save trip',
+        onConfirm: function (fd) {
+          var a = String(fd.get('from') || ''), b = String(fd.get('to') || '');
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(a) || !/^\d{4}-\d{2}-\d{2}$/.test(b)) return 'Pick both dates.';
+          if (a < today) return 'The trip can\'t start in the past.';
+          if (b < a) return '"To" must be on or after "From".';
+          var keep = fd.getAll('keep').map(String), id = uid(), n = 0;
+          for (var dd = a; dd <= b && n < 90; dd = addDays(dd, 1), n++) {
+            var p = getPlan(dd); p.away = true; p.awayKeep = keep; p.awayId = id;
+          }
+          if (n >= 90) return 'Keep trips to 90 days or less.';
+          logChange('plan.away', 'Set away ' + shortDate(a) + (b !== a ? ' → ' + shortDate(b) : '') + ', keeping ' + (keep.join(', ') || 'nothing'));
+          if (a <= today && today <= b) applyTodayPlan();
+          save(); renderAdmin();
+          toast('Trip saved. Have a lovely time.');
+        }
+      });
+    }
     function adminChangesHtml() {
       var f = ui.changesFilter || 'all';
       var list = audit.entries.filter(function (e) { return f === 'all' || e.who === f; }).slice().reverse();
@@ -1986,6 +2176,20 @@
       if (a === 'range') { ui.analyticsRange = e.target.value; renderAdmin(); }
       if (a === 'carry') { state.settings.carryOver = e.target.checked; logChange('setting', 'Turned carry-over ' + (e.target.checked ? 'on' : 'off')); save(); toast('Saved.'); }
       if (a === 'changes-filter') { ui.changesFilter = e.target.value; renderAdmin(); }
+      if (a === 'plan-toggle') {
+        var d = ui.planDate, id = e.target.getAttribute('data-id');
+        var tp = (state.templates[dayIdOf(d)] || []).filter(function (x) { return x.id === id; })[0];
+        if (!tp) return;
+        var p = getPlan(d);
+        p.skip = p.skip.filter(function (x) { return x !== id; });
+        p.keep = p.keep.filter(function (x) { return x !== id; });
+        if (e.target.checked) { if (isSkipped(tp, p)) p.keep.push(id); }
+        else if (!isSkipped(tp, p)) p.skip.push(id);
+        cleanPlan(d);
+        logChange('plan.' + (e.target.checked ? 'add' : 'drop'), (e.target.checked ? 'Planned back in ' : 'Dropped ') + q(tp.title) + ' for ' + shortDate(d));
+        if (d === dateKey()) applyTodayPlan();
+        save(); renderAdmin();
+      }
     });
 
     $('admin-view').addEventListener('click', function (e) {
@@ -2010,6 +2214,38 @@
           state.scheduled = state.scheduled.filter(function (x) { return x.id !== id; });
           save(); renderAdmin();
           break;
+        case 'plan-pick': ui.planDate = el.getAttribute('data-day'); renderAdmin(); break;
+        case 'plan-help': {
+          var pd = ui.planDate, pp = getPlan(pd), dropped = 0;
+          (state.templates[dayIdOf(pd)] || []).forEach(function (tp) {
+            if (tp.category === 'Home' && !isSkipped(tp, pp)) { pp.keep = pp.keep.filter(function (x) { return x !== tp.id; }); pp.skip.push(tp.id); dropped++; }
+          });
+          cleanPlan(pd);
+          if (dropped) logChange('plan.help', 'Help at home on ' + shortDate(pd) + ': dropped ' + dropped + ' Home task' + (dropped > 1 ? 's' : ''));
+          if (pd === dateKey()) applyTodayPlan();
+          save(); renderAdmin();
+          toast(dropped ? 'Dropped ' + dropped + ' Home task' + (dropped > 1 ? 's' : '') + '. Re-tick any you still want.' : 'No Home tasks on this day.');
+          break;
+        }
+        case 'plan-reset': {
+          var rd = ui.planDate; delete state.dayPlans[rd];
+          logChange('plan.reset', 'Set ' + shortDate(rd) + ' back to the normal routine');
+          if (rd === dateKey()) applyTodayPlan();
+          save(); renderAdmin();
+          break;
+        }
+        case 'away-new': openAwayEditor(); break;
+        case 'away-end': {
+          var first = null, last = null;
+          Object.keys(state.dayPlans).sort().forEach(function (k) {
+            var p = state.dayPlans[k];
+            if (p.away && (p.awayId === id || k === id)) { first = first || k; last = k; p.away = false; p.awayKeep = []; p.awayId = ''; cleanPlan(k); }
+          });
+          if (first) logChange('plan.away', 'Cancelled away ' + shortDate(first) + (last !== first ? ' → ' + shortDate(last) : ''));
+          if (first && first <= dateKey()) applyTodayPlan();
+          save(); renderAdmin();
+          break;
+        }
         case 'pick-day': ui.templateDay = el.getAttribute('data-day'); renderAdmin(); break;
         case 'new-tpl': openTplEditor(day, null); break;
         case 'edit-tpl': openTplEditor(day, (state.templates[day] || []).filter(function (x) { return x.id === id; })[0]); break;
