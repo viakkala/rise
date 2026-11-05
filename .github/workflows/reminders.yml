@@ -1,0 +1,70 @@
+# Sends Rise's task reminders to the user's phone. Times are UTC; India is UTC+5:30.
+# GitHub can start scheduled runs a few minutes late, so the times are set slightly early.
+name: Rise reminders
+
+on:
+  schedule:
+    - cron: '53 1 * * *'    # ~7:23 AM India: morning list
+    - cron: '23 7 * * *'    # ~12:53 PM India: midday nudge
+    - cron: '23 13 * * *'   # ~6:53 PM India: evening check
+    - cron: '53 14 * * 4'   # ~8:23 PM India, Thursdays: weekend plan reminder
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Which reminder to send now'
+        type: choice
+        options: [morning, midday, evening, weekend]
+        default: morning
+
+permissions:
+  contents: write
+
+concurrency:
+  group: rise-reminders
+  cancel-in-progress: false
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Pick the reminder
+        id: mode
+        run: |
+          case "${{ github.event.schedule }}" in
+            '53 1 * * *')  m=morning ;;
+            '23 7 * * *')  m=midday ;;
+            '23 13 * * *') m=evening ;;
+            '53 14 * * 4') m=weekend ;;
+            *)             m="${{ inputs.mode }}" ;;
+          esac
+          echo "mode=${m:-morning}" >> "$GITHUB_OUTPUT"
+      - name: Install
+        run: npm ci --prefix scripts --no-audit --no-fund
+      - name: Send
+        env:
+          RISE_BOT_EMAIL: rise.reminders@yourmail.com
+          RISE_BOT_PASSWORD: ${{ secrets.RISE_BOT_PASSWORD }}
+          VAPID_PUBLIC_KEY: BHJKrH9Fixw2nM6rZYTPJaRLV4ZYYaa6uPDL2IZKzRjH2e9FpmmE5LEBlXUhVoVB91qKzZ82Q0orNmI-dkq74QE
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+        run: node scripts/notify.mjs "${{ steps.mode.outputs.mode }}"
+
+      # GitHub pauses scheduled jobs in a repo with no commits for 60 days.
+      # After 50 quiet days this adds an empty commit so reminders keep running.
+      - name: Keep reminders running
+        if: steps.mode.outputs.mode == 'morning'
+        run: |
+          git fetch --depth=1 origin "${GITHUB_REF_NAME}"
+          last=$(git log -1 --format=%ct FETCH_HEAD)
+          if [ $(( $(date +%s) - last )) -gt $(( 50 * 86400 )) ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898729+github-actions[bot]@users.noreply.github.com"
+            git commit --allow-empty -m "Keep Rise reminders running"
+            git push origin HEAD:"${GITHUB_REF_NAME}"
+          fi

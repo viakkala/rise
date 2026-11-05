@@ -8,3 +8,13 @@ Single-file Progressive Web App (`index.html`), installable on Android from Chro
 - `sw.js` — offline cache (bump `CACHE` on every release)
 - `manifest.webmanifest`, `icon-*.png` — install metadata and icons
 - `firestore.rules` — Firestore security rules (paste into the Firebase console)
+- `badge-96.png` — small white icon shown in the Android status bar for reminders
+
+## Reminders
+
+The user phone can get notifications with today's list (about 7:30 AM, 1 PM and 7 PM India time, plus a Thursday-evening nudge if the weekend plan is still open). Nothing is sent when everything is done.
+
+- `.github/workflows/reminders.yml` runs on a schedule and calls `scripts/notify.mjs`.
+- The script signs in to Firebase as `rise.reminders@yourmail.com` (read-only by the rules), works out today's open tasks, and sends a web push to every phone that tapped **🔔 Turn on reminders**.
+- Repository secrets needed: `RISE_BOT_PASSWORD` (that account's password) and `VAPID_PRIVATE_KEY`. The matching public key is in `index.html` and the workflow.
+- Test any time: GitHub → Actions → Rise reminders → Run workflow.

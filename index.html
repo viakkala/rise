@@ -299,7 +299,7 @@
       <div class="tasks-head"><h3 id="tasks-heading">Today's Tasks</h3><button class="btn btn-add" type="button" data-action="user-add-task">+ Add task</button></div>
       <div id="metime-nudge"></div>
       <div id="task-list-container"></div>
-      <div class="tasks-foot"><button class="btn-link" type="button" data-action="user-labels">🏷 Manage labels</button><span class="sync-line" id="sync-line"></span></div>
+      <div class="tasks-foot"><span><button class="btn-link" type="button" data-action="user-labels">🏷 Manage labels</button><button class="btn-link hidden" type="button" data-action="reminders" id="remind-btn" style="margin-left: 14px;">🔔 Turn on reminders</button></span><span class="sync-line" id="sync-line"></span></div>
     </div>
 
     <div class="card">
@@ -979,6 +979,7 @@
         await pushChanges();
         syncMeta.joined = true; syncMeta.lastOk = Date.now(); saveSyncMeta();
         setSyncStatus('ok');
+        checkPush();
       } catch (e) {
         syncState.error = e.message || String(e);
         setSyncStatus(e.status === 403 || e.status === 401 ? 'error' : 'offline');
@@ -1025,6 +1026,88 @@
       $('nav-admin-btn').classList.toggle('hidden', syncOn() && !isAdminUser());
       if (syncOn() && !isAdminUser() && ui.view === 'admin') switchView('user');
       setSyncStatus(syncState.status);
+      updateRemindBtn();
+    }
+
+    // ---------- Reminders: notifications on the user's phone ----------
+    // The phone registers for push here; a scheduled GitHub job (scripts/notify.mjs) sends today's list
+    // at about 7:30 AM, 1 PM and 7 PM, plus a Thursday-evening nudge if the weekend plan is still open.
+    var VAPID_PUBLIC = 'BHJKrH9Fixw2nM6rZYTPJaRLV4ZYYaa6uPDL2IZKzRjH2e9FpmmE5LEBlXUhVoVB91qKzZ82Q0orNmI-dkq74QE';
+    var PUSH_KEY = 'rise.push.v1';
+    var pushChecked = false;
+    function pushSupported() {
+      return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && window.isSecureContext;
+    }
+    function remindersOn() { var p = lsGet(PUSH_KEY); return !!(p && p.key) && window.Notification && Notification.permission === 'granted'; }
+    function updateRemindBtn() {
+      var b = $('remind-btn'); if (!b) return;
+      b.classList.toggle('hidden', !(syncOn() && !isAdminUser() && pushSupported()));
+      b.textContent = remindersOn() ? '🔔 Reminders on' : '🔔 Turn on reminders';
+    }
+    function b64ToBytes(b64) {
+      var s = atob((b64 + '==='.slice((b64.length + 3) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+      var out = new Uint8Array(s.length);
+      for (var i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+      return out;
+    }
+    function pushDocKey(endpoint) { return 'push__' + hashStr(endpoint).replace(/[^A-Za-z0-9]/g, '_'); }
+    async function writePushDoc(key, sub) {
+      var w = sub ? {
+        update: { name: PARENT + '/items/' + key, fields: {
+          json: { stringValue: JSON.stringify({ sub: sub.toJSON(), role: isAdminUser() ? 'admin' : 'user', device: String(navigator.userAgent).slice(0, 140), created: Date.now() }) },
+          del: { booleanValue: false }, by: { stringValue: session.email }
+        } },
+        updateTransforms: [{ fieldPath: 'u', setToServerValue: 'REQUEST_TIME' }]
+      } : { delete: PARENT + '/items/' + key };
+      await fsPost(DOCS_ROOT + ':commit', { writes: [w] });
+    }
+    async function subscribePush(quiet) {
+      var reg = await navigator.serviceWorker.ready;
+      var sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID_PUBLIC) });
+      var old = lsGet(PUSH_KEY), key = pushDocKey(sub.endpoint);
+      if (old && old.key === key && quiet) return;
+      await writePushDoc(key, sub);
+      if (old && old.key && old.key !== key) await writePushDoc(old.key, null).catch(function () {});
+      lsSet(PUSH_KEY, { key: key, at: Date.now() });
+    }
+    async function turnOnReminders() {
+      var perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+      if (perm !== 'granted') {
+        openModal({ title: 'Notifications are blocked', body: '<p class="modal-msg">To get reminders, allow notifications for Rise: long-press the Rise icon → App info → Notifications → Allow. Then tap 🔔 again.</p>', confirmText: 'OK', cancelText: 'Close' });
+        return;
+      }
+      try {
+        await subscribePush(false);
+        logChange('reminders', 'Turned on reminders on the user phone');
+        save(); updateRemindBtn();
+        toast('Reminders on: about 7:30 AM, 1 PM and 7 PM.');
+      } catch (e) {
+        toast(navigator.onLine ? 'Couldn\'t turn on reminders. Try again in a minute.' : 'You\'re offline. Try again when connected.');
+      }
+    }
+    function toggleReminders() {
+      if (!remindersOn()) return turnOnReminders();
+      openModal({
+        title: 'Reminders',
+        body: '<p class="modal-msg">This phone gets today\'s list at about <b>7:30 AM</b>, what\'s left at <b>1 PM</b> and <b>7 PM</b>, and a Thursday-evening nudge if the weekend plan is still open. Nothing is sent when everything is done.</p>',
+        confirmText: 'Turn off', confirmClass: 'btn-secondary', cancelText: 'Keep on',
+        onConfirm: function () {
+          var p = lsGet(PUSH_KEY);
+          lsSet(PUSH_KEY, null); updateRemindBtn();
+          navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); })
+            .then(function (sub) { return sub && sub.unsubscribe(); }).catch(function () {});
+          if (p && p.key) writePushDoc(p.key, null).catch(function () {});
+          logChange('reminders', 'Turned off reminders on the user phone'); save();
+          toast('Reminders off.');
+        }
+      });
+    }
+    // Once per app start: if the phone's push address changed (it can after updates), register the new one.
+    function checkPush() {
+      if (pushChecked || !syncOn() || !pushSupported() || !remindersOn()) return;
+      pushChecked = true;
+      subscribePush(true).catch(function () { pushChecked = false; });
     }
     $('login-form').addEventListener('submit', async function (e) {
       e.preventDefault();
@@ -1603,6 +1686,7 @@
       if (action === 'add-metime') return openAddMeTime();
       if (action === 'user-add-task') return openTaskEditor(null);
       if (action === 'user-labels') return openLabels();
+      if (action === 'reminders') return toggleReminders();
       if (action === 'edit' && t) return openTaskEditor(t);
       if (action === 'why-more') { newBenefits(); renderWhy(); return; }
       if (action === 'why-goto' && t) {

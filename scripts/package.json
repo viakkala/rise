@@ -1,0 +1,9 @@
+{
+  "name": "rise-reminders",
+  "private": true,
+  "type": "module",
+  "description": "Sends Rise's daily task reminders as web push notifications. Run by .github/workflows/reminders.yml.",
+  "dependencies": {
+    "web-push": "^3.6.7"
+  }
+}

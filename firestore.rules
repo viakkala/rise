@@ -2,15 +2,20 @@ rules_version = '2';
 
 // Rise: only the family's signed-in accounts can read or write.
 // The change history can be added to by anyone signed in, but only the admin can edit or clear it.
+// The reminders account (used by the scheduled GitHub job) can only read.
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function isAdmin() { return signedIn() && request.auth.token.email == 'rise.admin@yourmail.com'; }
+    // The reminders account only reads the list, and can remove phones that turned reminders off.
+    function isBot() { return signedIn() && request.auth.token.email == 'rise.reminders@yourmail.com'; }
 
     match /households/main/items/{key} {
       allow read: if signedIn();
-      allow create: if signedIn();
-      allow update, delete: if isAdmin() || (signedIn() && !key.matches('changes__.*'));
+      allow create: if signedIn() && !isBot();
+      allow update, delete: if isAdmin()
+        || (signedIn() && !isBot() && !key.matches('changes__.*'))
+        || (isBot() && key.matches('push__.*'));
     }
 
     // Everything else is closed.
