@@ -268,7 +268,18 @@
       background: #f8fafc; color: #0f172a; padding: 10px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600;
       opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; z-index: 2000; max-width: calc(100% - 32px); text-align: center;
     }
-    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+    .toast-undo { background: none; border: none; color: #2563eb; font-weight: 700; font-size: 0.85rem; margin-left: 10px; padding: 0 2px; }
+    .btn-part { background: transparent; border: 1px solid var(--accent-warn); color: #fcd34d; }
+    .btn-later { background: transparent; border: 1px solid var(--border); color: var(--text-soft); }
+    .pick-list { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 6px; }
+    .pick-btn { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: var(--bg-elev, #1e293b); border: 1px solid var(--border); border-radius: 10px; color: var(--text); padding: 12px 14px; font-size: 0.95rem; font-weight: 600; }
+    .pick-btn:active { border-color: var(--accent-online); }
+    .pick-btn .ico { font-size: 1.2rem; width: 24px; text-align: center; }
+    .pick-btn small { display: block; font-weight: 400; color: var(--text-muted); font-size: 0.75rem; margin-top: 2px; }
+    .pick-row { display: flex; gap: 8px; }
+    .pick-row .pick-btn { flex-direction: column; gap: 2px; text-align: center; padding: 14px 6px; }
+    .badge-later { background: rgba(148,163,184,0.18); color: #cbd5e1; }
     .hidden { display: none !important; }
   </style>
 </head>
@@ -614,7 +625,9 @@
         whys: (Array.isArray(t.whys) ? t.whys.map(function (w) { return str(w, 200); }).filter(Boolean).slice(0, 5) : []),
         date: /^\d{4}-\d{2}-\d{2}$/.test(t.date) ? t.date : null,
         tag: str(t.tag, 30),
-        skipReason: t.skipReason === 'covered' || t.skipReason === 'not-needed' ? t.skipReason : null,
+        skipReason: t.skipReason === 'covered' || t.skipReason === 'not-needed' || t.skipReason === 'moved' ? t.skipReason : null,
+        movedTo: t.movedTo ? str(String(t.movedTo), 60) : null,
+        later: !!t.later,
         replaces: t.replaces ? str(t.replaces, 80) : null,
         createdIds: Array.isArray(t.createdIds) ? t.createdIds.map(String).slice(0, 40) : [],
         restore: t.restore && typeof t.restore === 'object' && str(t.restore.title) ? {
@@ -1273,6 +1286,7 @@
         // The weekend family plan always carries over until it's done; other tasks only when partly done.
         if (t.status !== 'done' && t.status !== 'skipped' && (t.kind === 'weekend' || (state.settings.carryOver && hasProgress(t)))) {
           t.carried = true;
+          t.later = false;
           t.status = hasProgress(t) ? 'partial' : 'active';
           t.lastDoneLogId = null;
           // While away, unfinished work in paused labels waits on the side instead of piling up.
@@ -1306,16 +1320,22 @@
 
     // ---------- Toast ----------
     var toastTimer = null;
-    function toast(msg) {
+    function toast(msg, undo) {
       var el = $('toast');
       el.textContent = msg;
+      if (undo) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'toast-undo'; b.textContent = 'Undo';
+        b.addEventListener('click', function () { el.classList.remove('show'); undo(); });
+        el.appendChild(b);
+      }
       el.classList.add('show');
       clearTimeout(toastTimer);
-      toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2600);
+      toastTimer = setTimeout(function () { el.classList.remove('show'); }, undo ? 5000 : 2600);
     }
 
     // ---------- Modal ----------
-    var modalHandler = null;
+    var modalHandler = null, modalPick = null;
     var modalExtra = null;
     var lastFocus = null;
     function openModal(opts) {
@@ -1329,12 +1349,13 @@
       $('modal-cancel').textContent = opts.cancelText || 'Cancel';
       modalHandler = opts.onConfirm || null;
       modalExtra = opts.extra || null;
+      modalPick = opts.onPick || null;
       $('modal-extra').textContent = opts.extra ? opts.extra.text : '';
       $('modal-extra').classList.toggle('hidden', !opts.extra);
       var m = $('modal');
       m.classList.add('active');
       m.setAttribute('aria-hidden', 'false');
-      var first = $('modal-form').querySelector('#modal-body input, #modal-body select, #modal-body textarea');
+      var first = opts.noFocus ? $('modal-cancel') : $('modal-form').querySelector('#modal-body input, #modal-body select, #modal-body textarea');
       setTimeout(function () { (first || confirmBtn).focus(); }, 30);
     }
     function closeModal() {
@@ -1360,6 +1381,13 @@
     });
     $('modal-cancel').addEventListener('click', closeModal);
     $('modal-form').addEventListener('click', function (e) {
+      var pk = e.target.closest('[data-pick]');
+      if (pk && modalPick) {
+        e.preventDefault();
+        var fn = modalPick, val = pk.getAttribute('data-pick'), fd = new FormData($('modal-form'));
+        closeModal(); fn(val, fd);
+        return;
+      }
       if (!e.target.closest('[data-days-all]')) return;
       var boxes = $('modal-form').querySelectorAll('input[name="days"]');
       var allOn = Array.prototype.every.call(boxes, function (b) { return b.checked; });
@@ -1460,7 +1488,7 @@
       state.log.forEach(function (e) { if (e.date === today) mins += e.sessionMins; });
       $('summary-strip').innerHTML =
         '<div class="stat"><div class="stat-value">' + done + '/' + total + '</div><div class="stat-label">Tasks done</div></div>' +
-        '<div class="stat"><div class="stat-value">' + fmtMins(mins) + '</div><div class="stat-label">Focused today</div></div>' +
+        '<div class="stat"><div class="stat-value">' + fmtMins(mins) + '</div><div class="stat-label">Time well spent</div></div>' +
         '<div class="stat metime"><div class="stat-value">' + (meTotal ? meDone + '/' + meTotal : '—') + '</div><div class="stat-label">Me Time</div></div>';
     }
 
@@ -1475,17 +1503,17 @@
       var h = '<div class="task-item' + (isMe ? ' metime' : '') + (done ? ' done' : '') + (pinned ? ' pinned' : '') + '" data-card="' + id + '">';
       if (pinned) h += '<span class="pin-note">📌 Do this before the weekend' + (t.carried ? ' · still waiting' : '') + '</span>';
       h += '<div class="task-header"><span class="task-title">' + esc(t.title) + '</span><span class="badges">';
-      if (skippedT) h += '<span class="badge badge-skip">' + (t.skipReason === 'covered' ? 'Covered by someone' : 'Not needed') + '</span>';
+      if (skippedT) h += '<span class="badge badge-skip">' + (t.skipReason === 'covered' ? 'Covered by someone' : t.skipReason === 'moved' ? 'Moved to tomorrow' : 'Not needed') + '</span>';
       else if (done) h += '<span class="badge badge-done">Done</span>';
+      else if (t.later) h += '<span class="badge badge-later">Later</span>';
       else if (t.carried) h += '<span class="badge badge-carried">Carried over</span>';
       else if (t.status === 'partial') h += '<span class="badge badge-partial">' + pct + '%</span>';
       if (t.tag) h += '<span class="badge badge-family">' + esc(t.tag) + '</span>';
       h += '<span class="badge' + (isMe ? ' badge-metime' : '') + '">' + esc(t.category) + '</span>' +
-           (done ? '' : '<button class="btn-skip" type="button" data-action="skip" data-task="' + id + '">Skip</button>') +
            '<button class="btn-edit" type="button" aria-label="Edit or delete task" data-action="edit" data-task="' + id + '">✎</button></span></div>';
 
-      h += '<div class="task-meta"><span>' + (t.runningSince ? '<span class="timer-live" data-timer-since="' + t.runningSince + '">' + fmtClock(Date.now() - t.runningSince) + '</span>' : (pct ? pct + '% done' : 'Not started')) + '</span>';
-      h += '<span>' + t.timeSpent + ' / ' + t.est + ' min</span></div>';
+      h += '<div class="task-meta"><span>' + (pct && !done ? pct + '% done' : '') + '</span>';
+      h += '<span>~' + t.est + ' min</span></div>';
       h += '<div class="progress-bar-bg"><div class="progress-bar-fill" style="width:' + pct + '%;"></div></div>';
 
       // Optional steps: only shown when a routine defines them, and collapsed by default.
@@ -1507,11 +1535,12 @@
       } else if (done) {
         h += '<button class="btn-action btn-subtask" type="button" data-action="reopen" data-task="' + id + '">Reopen</button>';
       } else {
-        h += '<button class="btn-action btn-timer' + (t.runningSince ? ' running' : '') + '" type="button" data-action="timer" data-task="' + id + '">' + (t.runningSince ? '■ Stop' : '▶ Start') + '</button>';
-        h += '<button class="btn-action btn-pause" type="button" data-action="pause" data-task="' + id + '">Pause</button>';
+        // Do it whenever, then say so: Done, Part done, or Later. No start button needed.
         h += t.kind === 'normal'
-          ? '<button class="btn-action btn-done" type="button" data-action="complete" data-task="' + id + '">Done</button>'
+          ? '<button class="btn-action btn-done" type="button" data-action="complete" data-task="' + id + '">✓ Done</button>' +
+            '<button class="btn-action btn-part" type="button" data-action="part" data-task="' + id + '">Part done</button>'
           : '<button class="btn-action btn-plan" type="button" data-action="complete" data-task="' + id + '">Plan it</button>';
+        h += '<button class="btn-action btn-later" type="button" data-action="later" data-task="' + id + '">Later</button>';
       }
       h += '</div></div>';
       return h;
@@ -1537,7 +1566,7 @@
       var closed = list.filter(function (t) { return t.status === 'done'; });
       var skipped = list.filter(function (t) { return t.status === 'skipped'; });
       // Weekend plan pinned first, then Me Time, then partial work, then the rest.
-      function rank(t) { return (t.kind === 'weekend' ? 0 : 10) + (t.category === ME_TIME ? 0 : 2) + (t.status === 'partial' ? 0 : 1); }
+      function rank(t) { return (t.later ? 100 : 0) + (t.kind === 'weekend' ? 0 : 10) + (t.category === ME_TIME ? 0 : 2) + (t.status === 'partial' ? 0 : 1); }
       open.sort(function (a, b) { return rank(a) - rank(b); });
 
       var html = '';
@@ -1552,7 +1581,7 @@
           html += '</details>';
         }
         if (skipped.length) {
-          html += '<details class="completed"' + (ui.skippedOpen ? ' open' : '') + ' id="skipped-details"><summary>Skipped (' + skipped.length + ')</summary>';
+          html += '<details class="completed"' + (ui.skippedOpen ? ' open' : '') + ' id="skipped-details"><summary>Skipped or moved (' + skipped.length + ')</summary>';
           skipped.forEach(function (t) { html += taskCardHtml(t); });
           html += '</details>';
         }
@@ -1702,15 +1731,11 @@
       if (action === 'timer') return toggleTimer(t);
       if (action === 'steps') { ui.openSteps[t.id] = !ui.openSteps[t.id]; renderTasks(); return; }
       if (action === 'pause') return openPause(t);
+      if (action === 'part') return openPartDone(t);
+      if (action === 'later') return openLater(t);
       if (action === 'complete') return quickComplete(t);
       if (action === 'reopen') return reopenTask(t);
-      if (action === 'skip') return openSkip(t);
-      if (action === 'unskip') {
-        t.status = hasProgress(t) ? 'partial' : 'active'; t.skipReason = null;
-        logChange('task.unskip', 'Un-skipped ' + q(t.title));
-        save(); renderUser(); toast('Back on the list.');
-        return;
-      }
+      if (action === 'unskip') return unskip(t);
     });
 
     function toggleTimer(t) {
@@ -1780,26 +1805,99 @@
     function quickComplete(t) {
       if (t.kind === 'plan') return openPlanDone(t);
       if (t.kind === 'weekend') return openWeekendDone(t);
-      if (t.runningSince) return markDone(t, Math.max(1, runningMins(t)));
-      if (t.timeSpent > 0) return markDone(t, 0);
-      openComplete(t);
+      markDone(t, autoMins(t));
+      toast((t.category === ME_TIME ? 'Me Time logged 💗' : 'Done 🎉'), function () { reopenTask(t); });
     }
+    // Time isn't tracked by hand any more: a task counts as its estimate (less anything already credited).
+    function autoMins(t) { return t.runningSince ? Math.max(1, runningMins(t)) : Math.max(0, t.est - t.timeSpent); }
 
-    function openComplete(t) {
+    // ◐ Part done: one tap on how far you got. Partial progress counts and carries to tomorrow.
+    function openPartDone(t) {
+      var cur = progressPct(t);
+      var picks = PROGRESS_CHOICES.map(function (ch) {
+        return '<button type="button" class="pick-btn" data-pick="' + ch[0] + '"' + (ch[0] <= cur ? ' disabled style="opacity:.4"' : '') + '>' + ch[1] + '<small>' + ch[2] + '</small></button>';
+      }).join('');
       openModal({
-        title: 'How long did it take?',
-        body: '<p class="modal-msg">' + esc(t.title) + '</p>' +
-              '<label>Minutes<input name="mins" type="number" inputmode="numeric" min="0" max="600" value="' + t.est + '"></label>' +
-              '<p class="muted small">Tip: tap ▶ Start next time and Done becomes one tap.</p>',
-        confirmText: 'Mark done',
-        confirmClass: 'btn-success',
-        onConfirm: function (fd) {
-          var raw = String(fd.get('mins') || '0').trim();
-          var mins = parseInt(raw, 10);
-          if (!/^\d+$/.test(raw) || mins > 600) return 'Enter a whole number of minutes from 0 to 600.';
-          markDone(t, mins);
+        title: 'How much is done?',
+        body: '<p class="modal-msg">' + esc(t.title) + '<br><span class="muted">Every bit counts. The rest stays on the list' + (state.settings.carryOver ? ' and carries to tomorrow' : '') + '.</span></p>' +
+              '<div class="pick-row">' + picks + '</div>',
+        confirmText: 'Close', confirmClass: 'btn-secondary hidden', cancelText: 'Cancel', noFocus: true,
+        onPick: function (v) {
+          var next = clampInt(v, 0, 100, 25);
+          var before = progressPct(t);
+          var mins = t.runningSince ? Math.max(1, runningMins(t)) : Math.max(0, Math.round(t.est * (next - before) / 100));
+          var prev = { progress: t.progress, timeSpent: t.timeSpent, status: t.status, later: t.later };
+          t.runningSince = null;
+          t.timeSpent += mins;
+          t.progress = Math.max(t.progress || 0, next);
+          t.status = 'partial';
+          t.later = false;
+          var entry = addLog(t, 'partial', mins, '');
+          save(); renderUser();
+          toast('Saved at ' + progressPct(t) + '%. Well done.', function () {
+            t.progress = prev.progress; t.timeSpent = prev.timeSpent; t.status = prev.status; t.later = prev.later;
+            state.log = state.log.filter(function (e) { return e.id !== entry.id; });
+            save(); renderUser();
+          });
         }
       });
+    }
+
+    // Later: not now. Later today, tomorrow, someone else did it, or not needed today.
+    function openLater(t) {
+      var pick = function (val, ico, label, sub) { return '<button type="button" class="pick-btn" data-pick="' + val + '"><span class="ico">' + ico + '</span><span>' + label + (sub ? '<small>' + sub + '</small>' : '') + '</span></button>'; };
+      openModal({
+        title: 'Not now?',
+        body: '<p class="modal-msg">' + esc(t.title) + '</p><div class="pick-list">' +
+              (t.later ? pick('now', '↑', 'Back to the top', 'Show it with the others again') : pick('today', '🕑', 'Later today', 'Moves to the bottom of the list')) +
+              pick('tomorrow', '→', 'Tomorrow', 'Off today\'s list, back tomorrow' + (progressPct(t) ? ' at ' + progressPct(t) + '%' : '')) +
+              pick('covered', '🤝', 'Someone else did it', 'Doesn\'t count against today') +
+              pick('not-needed', '✕', 'Not needed today', 'Doesn\'t count against today') +
+              '</div><label>Note (optional)<input name="note" maxlength="100" autocomplete="off" placeholder="e.g. Amma cooked dinner"></label>',
+        confirmText: 'Close', confirmClass: 'btn-secondary hidden', cancelText: 'Cancel', noFocus: true,
+        onPick: function (val, fd) {
+          var note = str(fd.get('note'), 100);
+          if (val === 'today' || val === 'now') {
+            t.later = val === 'today';
+            save(); renderUser();
+            toast(t.later ? 'OK, it\'s at the bottom for later.' : 'Back on top.');
+            return;
+          }
+          stopTimer(t, 'Stopped when moved');
+          if (val === 'tomorrow') return moveToTomorrow(t, note);
+          t.status = 'skipped'; t.later = false;
+          t.skipReason = val === 'not-needed' ? 'not-needed' : 'covered';
+          logChange('task.skip', 'Skipped ' + q(t.title) + ' today: ' + (t.skipReason === 'covered' ? 'covered by someone else' : 'not needed') + (note ? ' (' + note + ')' : ''));
+          save(); renderUser();
+          toast(t.skipReason === 'covered' ? 'Nice, teamwork. Skipped for today.' : 'Skipped for today.', function () { unskip(t, true); });
+        }
+      });
+    }
+    // Tomorrow: today's card is set aside, and a copy (keeping any progress) waits for tomorrow.
+    // If tomorrow's routine has the same task, the copy takes its place rather than doubling up.
+    function moveToTomorrow(t, note) {
+      var copy = normTask(JSON.parse(JSON.stringify(t)));
+      copy.id = 'm' + uid();
+      copy.status = hasProgress(copy) ? 'partial' : 'active';
+      copy.carried = true; copy.later = false; copy.skipReason = null; copy.movedTo = null;
+      copy.lastDoneLogId = null; copy.createdIds = []; copy.restore = null;
+      copy.replaces = t.title;
+      var tomorrow = addDays(dateKey(), 1);
+      scheduleTask(copy, tomorrow);
+      t.status = 'skipped'; t.skipReason = 'moved'; t.movedTo = copy.id; t.later = false;
+      logChange('task.move', 'Moved ' + q(t.title) + ' to tomorrow' + (note ? ' (' + note + ')' : ''));
+      save(); renderUser();
+      toast('Moved to tomorrow.', function () { unskip(t, true); });
+    }
+    function unskip(t, viaUndo) {
+      if (t.skipReason === 'moved' && t.movedTo) {
+        var id = t.movedTo;
+        state.scheduled = state.scheduled.filter(function (sc) { return sc.id !== id; });
+      }
+      var wasMoved = t.skipReason === 'moved';
+      t.status = hasProgress(t) ? 'partial' : 'active'; t.skipReason = null; t.movedTo = null;
+      logChange(wasMoved ? 'task.unmove' : 'task.unskip', (wasMoved ? 'Brought back ' : 'Un-skipped ') + q(t.title) + ' for today');
+      save(); renderUser(); toast(viaUndo ? 'Undone.' : 'Back on the list.');
     }
 
     function findTemplate(id) {
@@ -1810,13 +1908,6 @@
       }
       return null;
     }
-    function sessionMinsSuggestion(t) { return t.runningSince ? Math.max(1, runningMins(t)) : (t.timeSpent > 0 ? 0 : t.est); }
-    function readMins(fd) {
-      var raw = String(fd.get('mins') || '0').trim();
-      var mins = parseInt(raw, 10);
-      return (!/^\d+$/.test(raw) || mins > 600) ? null : mins;
-    }
-
     // "Plan tomorrow's play with the kids" → asks what, and tomorrow's "Play with the kids" becomes "Play with the kids: <plan>".
     function openPlanDone(t) {
       if (!t.followEst) { var src = findTemplate(t.templateId); t.followEst = src ? src.followEst : 30; }
@@ -1826,13 +1917,11 @@
         title: "What's the plan?",
         body: '<p class="modal-msg">' + esc(t.title) + '</p>' +
               '<label>Plan<input name="plan" maxlength="60" autocomplete="off" placeholder="' + (/play|kid/i.test(follow) ? 'e.g. Lego tower, drawing, cycling' : /breakfast|lunch|dinner|meal/i.test(follow) ? 'e.g. Poha, dal rice, pasta' : 'What will you do?') + '"></label>' +
-              '<p class="muted small" style="margin: -6px 0 12px;">' + (target <= dateKey() ? 'Today' : 'Tomorrow') + '\'s task becomes “' + esc(follow) + ': …”. Leave empty to keep it open.</p>' +
-              '<label>Minutes spent planning<input name="mins" type="number" inputmode="numeric" min="0" max="600" value="' + sessionMinsSuggestion(t) + '"></label>',
+              '<p class="muted small" style="margin: -6px 0 12px;">' + (target <= dateKey() ? 'Today' : 'Tomorrow') + '\'s task becomes “' + esc(follow) + ': …”. Leave empty to keep it open.</p>',
         confirmText: 'Save plan',
         confirmClass: 'btn-plan',
         onConfirm: function (fd) {
-          var mins = readMins(fd);
-          if (mins === null) return 'Enter a whole number of minutes from 0 to 600.';
+          var mins = autoMins(t);
           var plan = str(fd.get('plan'), 60);
           t.createdIds = [];
           if (plan) {
@@ -1861,13 +1950,11 @@
       }).join('');
       openModal({
         title: 'Weekend plan with family',
-        body: '<p class="modal-msg">Each line becomes a Family task on that day.</p>' + fields +
-              '<label>Minutes spent planning<input name="mins" type="number" inputmode="numeric" min="0" max="600" value="' + sessionMinsSuggestion(t) + '"></label>',
+        body: '<p class="modal-msg">Each line becomes a Family task on that day.</p>' + fields,
         confirmText: 'Save weekend plan',
         confirmClass: 'btn-plan',
         onConfirm: function (fd) {
-          var mins = readMins(fd);
-          if (mins === null) return 'Enter a whole number of minutes from 0 to 600.';
+          var mins = autoMins(t);
           var plans = days.map(function (d, i) {
             return String(fd.get('day' + i) || '').split('\n').map(function (x) { return x.trim().slice(0, 80); }).filter(Boolean).slice(0, 10);
           });
@@ -1897,29 +1984,6 @@
       });
       state.tasks = state.tasks.concat(restored);
       t.createdIds = [];
-    }
-
-    // "Skip today": someone else covered it, or it's not needed. Not a failure, not counted in progress.
-    function openSkip(t) {
-      openModal({
-        title: 'Skip for today?',
-        body: '<p class="modal-msg">' + esc(t.title) + '</p>' +
-              '<div class="choice-row" role="radiogroup" aria-label="Reason">' +
-              '<label><input type="radio" name="reason" value="covered" checked><span>Someone else<small>covered it</small></span></label>' +
-              '<label><input type="radio" name="reason" value="not-needed"><span>Not needed<small>today</small></span></label></div>' +
-              '<label>Note (optional)<input name="note" maxlength="100" autocomplete="off" placeholder="e.g. Amma cooked dinner"></label>',
-        confirmText: 'Skip',
-        confirmClass: 'btn-secondary',
-        onConfirm: function (fd) {
-          stopTimer(t, 'Stopped when skipped');
-          t.status = 'skipped';
-          t.skipReason = fd.get('reason') === 'not-needed' ? 'not-needed' : 'covered';
-          var note = str(fd.get('note'), 100);
-          logChange('task.skip', 'Skipped ' + q(t.title) + ' today: ' + (t.skipReason === 'covered' ? 'covered by someone else' : 'not needed') + (note ? ' (' + note + ')' : ''));
-          save(); renderUser();
-          toast(t.skipReason === 'covered' ? 'Nice, teamwork. Skipped for today.' : 'Skipped for today.');
-        }
-      });
     }
 
     function reopenTask(t) {
