@@ -81,6 +81,14 @@
     }
     .btn-context.active[data-context="online"] { background: var(--accent-online); color: #fff; border-color: var(--accent-online); }
     .btn-context.active[data-context="offline"] { background: var(--accent-offline); color: #fff; border-color: var(--accent-offline); }
+    .btn-context.active[data-context="love"] { background: #db2777; color: #fff; border-color: #db2777; }
+    .btn-context { white-space: nowrap; padding: 10px 6px; }
+    .task-actions:has(.btn-love) { flex-wrap: nowrap; }
+    .task-actions:has(.btn-love) .btn-action { min-width: 0; }
+    .btn-action.btn-love { flex: 0 0 44px !important; min-width: 44px; padding-left: 0; padding-right: 0; background: transparent; border: 1px solid #db2777; color: #f9a8d4; }
+    .badge-love { background: rgba(219,39,119,0.2); color: #f9a8d4; }
+    .love-note { font-size: 0.8rem; color: #f9a8d4; margin: -2px 0 8px; }
+    .task-item.love { border-left: 3px solid #db2777; }
     .count-pill { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 4px; border-radius: 10px; background: rgba(0,0,0,0.25); font-size: 0.75rem; }
 
     .task-item {
@@ -306,6 +314,7 @@
     <div class="context-switcher">
       <button class="btn-context active" data-context="online" id="btn-online" type="button">🌐 Online</button>
       <button class="btn-context" data-context="offline" id="btn-offline" type="button">🏡 Offline</button>
+      <button class="btn-context" data-context="love" id="btn-love" type="button">💗 Love</button>
     </div>
 
     <div class="card">
@@ -572,7 +581,7 @@
       return {
         version: 3,
         pin: '1234',
-        settings: { carryOver: true },
+        settings: { carryOver: true, loveName: 'Love' },
         categories: CATS.slice(),
         templates: defaultTemplates(),
         tasks: [],
@@ -630,6 +639,10 @@
         skipReason: t.skipReason === 'covered' || t.skipReason === 'not-needed' || t.skipReason === 'moved' ? t.skipReason : null,
         movedTo: t.movedTo ? str(String(t.movedTo), 60) : null,
         later: !!t.later,
+        assignee: t.assignee === 'love' ? 'love' : null,
+        assignedAt: t.assignee === 'love' ? clampInt(t.assignedAt, 0, 9e15, 0) : 0,
+        loveNote: t.assignee === 'love' && t.loveNote ? str(String(t.loveNote), 100) : '',
+        doneBy: t.doneBy === 'love' ? 'love' : null,
         replaces: t.replaces ? str(t.replaces, 80) : null,
         createdIds: Array.isArray(t.createdIds) ? t.createdIds.map(String).slice(0, 40) : [],
         restore: t.restore && typeof t.restore === 'object' && str(t.restore.title) ? {
@@ -671,13 +684,18 @@
         note: str(e.note, 200)
       };
     }
+    function normSettings(x) {
+      x = x || {};
+      return { carryOver: typeof x.carryOver === 'boolean' ? x.carryOver : true, loveName: str(x.loveName, 20) || 'Love' };
+    }
+    function loveName() { return (state.settings && state.settings.loveName) || 'Love'; }
     function normalize(raw) {
       var d = defaultState();
       if (!raw || typeof raw !== 'object') return d;
       var oldVersion = typeof raw.version === 'number' ? raw.version : 1;
       var s = { version: 3 };
       s.pin = typeof raw.pin === 'string' && /^\d{4,8}$/.test(raw.pin) ? raw.pin : d.pin;
-      s.settings = { carryOver: raw.settings && typeof raw.settings.carryOver === 'boolean' ? raw.settings.carryOver : true };
+      s.settings = normSettings(raw.settings);
       var cats = Array.isArray(raw.categories) ? raw.categories.map(function (c) { c = str(c, 40); return CAT_MIGRATE[c] || c; }).filter(Boolean) : [];
       if (oldVersion < 2) cats = CATS.concat(cats); // new standard set first, keep any custom extras
       cats = cats.filter(function (c, i) { return cats.indexOf(c) === i; }).slice(0, 10);
@@ -840,7 +858,7 @@
       else if (col === 'meta') {
         if (obj) {
           if (Array.isArray(obj.categories) && obj.categories.length >= 3) state.categories = obj.categories.map(function (c) { return str(c, 40); }).filter(Boolean);
-          if (obj.settings && typeof obj.settings.carryOver === 'boolean') state.settings = { carryOver: obj.settings.carryOver };
+          if (obj.settings) state.settings = normSettings(obj.settings);
           if (typeof obj.lastSeedDate === 'string') state.lastSeedDate = obj.lastSeedDate;
         }
       }
@@ -1286,13 +1304,13 @@
           if (mins > 0) { t.timeSpent += mins; addLog(t, 'partial', mins, 'Timer auto-stopped at day change'); }
         }
         // The weekend family plan always carries over until it's done; other tasks only when partly done.
-        if (t.status !== 'done' && t.status !== 'skipped' && (t.kind === 'weekend' || (state.settings.carryOver && hasProgress(t)))) {
+        if (t.status !== 'done' && t.status !== 'skipped' && (t.assignee || t.kind === 'weekend' || (state.settings.carryOver && hasProgress(t)))) {
           t.carried = true;
           t.later = false;
           t.status = hasProgress(t) ? 'partial' : 'active';
           t.lastDoneLogId = null;
           // While away, unfinished work in paused labels waits on the side instead of piling up.
-          if (awayBlocks(t.category, plan)) state.held.push(t); else kept.push(t);
+          if (awayBlocks(t.category, plan) && !t.assignee) state.held.push(t); else kept.push(t);
         }
       });
       state.held = state.held.filter(function (t) {
@@ -1480,7 +1498,7 @@
 
     // ---------- User view rendering ----------
     function renderSummary() {
-      var active = state.tasks.filter(function (t) { return t.status !== 'skipped'; });
+      var active = state.tasks.filter(function (t) { return t.status !== 'skipped' && !t.assignee; });
       var total = active.length, done = 0, mins = 0, meTotal = 0, meDone = 0;
       active.forEach(function (t) {
         if (t.status === 'done') done++;
@@ -1502,6 +1520,7 @@
       var done = t.status === 'done' || skippedT;
       var id = esc(t.id);
       var pinned = t.kind === 'weekend' && !done;
+      if (t.assignee) return loveCardHtml(t);
       var h = '<div class="task-item' + (isMe ? ' metime' : '') + (done ? ' done' : '') + (pinned ? ' pinned' : '') + '" data-card="' + id + '">';
       if (pinned) h += '<span class="pin-note">📌 Do this before the weekend' + (t.carried ? ' · still waiting' : '') + '</span>';
       h += '<div class="task-header"><span class="task-title">' + esc(t.title) + '</span><span class="badges">';
@@ -1543,19 +1562,21 @@
             '<button class="btn-action btn-part" type="button" data-action="part" data-task="' + id + '">Part done</button>'
           : '<button class="btn-action btn-plan" type="button" data-action="complete" data-task="' + id + '">Plan it</button>';
         h += '<button class="btn-action btn-later" type="button" data-action="later" data-task="' + id + '">Later</button>';
+        h += '<button class="btn-action btn-love" type="button" data-action="give-love" data-task="' + id + '" aria-label="Give to ' + esc(loveName()) + '" title="Give to ' + esc(loveName()) + '">💗</button>';
       }
       h += '</div></div>';
       return h;
     }
 
     function renderTasks() {
-      ['online', 'offline'].forEach(function (ctx) {
+      ['online', 'offline', 'love'].forEach(function (ctx) {
         var btn = $('btn-' + ctx);
-        var open = state.tasks.filter(function (t) { return t.context === ctx && t.status !== 'done' && t.status !== 'skipped'; }).length;
+        var open = state.tasks.filter(function (t) { return (ctx === 'love' ? !!t.assignee : t.context === ctx && !t.assignee) && t.status !== 'done' && t.status !== 'skipped'; }).length;
         btn.classList.toggle('active', ui.context === ctx);
         btn.setAttribute('aria-pressed', ui.context === ctx ? 'true' : 'false');
-        btn.innerHTML = (ctx === 'online' ? '🌐 Online' : '🏡 Offline') + '<span class="count-pill">' + open + '</span>';
+        btn.innerHTML = (ctx === 'online' ? '🌐 Online' : ctx === 'offline' ? '🏡 Offline' : '💗 ' + esc(loveName())) + '<span class="count-pill">' + open + '</span>';
       });
+      if (ui.context === 'love') return renderLoveTasks();
       $('tasks-heading').textContent = DAY_NAMES[todayDayId()] + "'s Tasks";
 
       var hasMe = state.tasks.some(function (t) { return t.category === ME_TIME; });
@@ -1563,7 +1584,7 @@
       $('metime-nudge').innerHTML = (todayPlan && todayPlan.away ? '<div class="away-banner">✈ Away today. Only ' + esc(todayPlan.awayKeep.join(' and ') || 'nothing') + ' ' + (todayPlan.awayKeep.length > 1 ? 'are' : 'is') + ' on the list. Enjoy the break.</div>' : '') + (hasMe ? '' :
         '<div class="metime-nudge"><p>No Me Time planned today. You\'ve earned some.</p><button class="btn btn-metime" type="button" data-action="add-metime">+ Add</button></div>');
 
-      var list = state.tasks.filter(function (t) { return t.context === ui.context; });
+      var list = state.tasks.filter(function (t) { return t.context === ui.context && !t.assignee; });
       var open = list.filter(function (t) { return t.status !== 'done' && t.status !== 'skipped'; });
       var closed = list.filter(function (t) { return t.status === 'done'; });
       var skipped = list.filter(function (t) { return t.status === 'skipped'; });
@@ -1595,12 +1616,84 @@
       if (sdet) sdet.addEventListener('toggle', function () { ui.skippedOpen = sdet.open; });
     }
 
+    // ---------- Given to Love: tasks the user hands to the admin ----------
+    function iAmLove() { return syncOn() && isAdminUser(); }
+    function clockText(ms) { return ms ? new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''; }
+    function loveCardHtml(t) {
+      var id = esc(t.id), done = t.status === 'done', name = esc(loveName());
+      var h = '<div class="task-item love' + (done ? ' done' : '') + '" data-card="' + id + '">';
+      h += '<div class="task-header"><span class="task-title">' + esc(t.title) + '</span><span class="badges">' +
+           (done ? '<span class="badge badge-done">Done by ' + name + '</span>' : '<span class="badge badge-love">' + (iAmLove() ? 'For you' : 'With ' + name) + '</span>') +
+           (t.carried && !done ? '<span class="badge badge-carried">From earlier</span>' : '') +
+           '<span class="badge">' + esc(t.category) + '</span></span></div>';
+      if (t.loveNote) h += '<div class="love-note">“' + esc(t.loveNote) + '”</div>';
+      h += '<div class="task-meta"><span>' + (iAmLove() ? 'Given to you' : 'Given to ' + name) + (t.assignedAt ? ' · ' + (t.carried ? prettyDate(dateKey(new Date(t.assignedAt))) + ' ' : '') + clockText(t.assignedAt) : '') + '</span><span>~' + t.est + ' min</span></div>';
+      h += '<div class="task-actions">';
+      if (done) h += '<button class="btn-action btn-subtask" type="button" data-action="love-reopen" data-task="' + id + '">Reopen</button>';
+      else h += '<button class="btn-action btn-done" type="button" data-action="love-done" data-task="' + id + '">' + (iAmLove() ? '✓ Done' : '✓ ' + name + ' did it') + '</button>' +
+                '<button class="btn-action btn-later" type="button" data-action="love-back" data-task="' + id + '">' + (iAmLove() ? 'Hand back' : 'Take back') + '</button>';
+      return h + '</div></div>';
+    }
+    function renderLoveTasks() {
+      $('tasks-heading').textContent = (iAmLove() ? 'Given to you' : 'Given to ' + loveName());
+      var list = state.tasks.filter(function (t) { return t.assignee; });
+      var open = list.filter(function (t) { return t.status !== 'done'; }).sort(function (a, b) { return a.assignedAt - b.assignedAt; });
+      var closed = list.filter(function (t) { return t.status === 'done'; });
+      var h = '';
+      if (!list.length) h = '<p class="muted">' + (iAmLove() ? 'Nothing handed to you right now.' : 'Nothing with ' + esc(loveName()) + ' right now. Tap 💗 on any task to hand it over.') + '</p>';
+      else {
+        h += '<p class="muted small" style="margin-bottom: 10px;">' + closed.length + ' of ' + list.length + ' done' + (open.length ? ' · these stay here until done' : ' 🎉') + '</p>';
+        open.forEach(function (t) { h += loveCardHtml(t); });
+        if (closed.length) {
+          h += '<details class="completed" id="completed-details"' + (ui.completedOpen ? ' open' : '') + '><summary>Done by ' + esc(loveName()) + ' (' + closed.length + ')</summary>';
+          closed.forEach(function (t) { h += loveCardHtml(t); });
+          h += '</details>';
+        }
+      }
+      $('task-list-container').innerHTML = h;
+    }
+    function openGiveLove(t) {
+      var name = loveName();
+      openModal({
+        title: 'Give to ' + esc(name) + '? 💗',
+        body: '<p class="modal-msg">' + esc(t.title) + '<br><span class="muted">It moves to the 💗 ' + esc(name) + ' tab, where you both can see it, and doesn\'t count against your day.</span></p>' +
+              '<label>Note for ' + esc(name) + ' (optional)<input name="note" maxlength="100" autocomplete="off" placeholder="e.g. Before 6, please"></label>',
+        confirmText: '💗 Give to ' + esc(name), noFocus: true,
+        onConfirm: function (fd) {
+          stopTimer(t, 'Stopped when handed over');
+          t.assignee = 'love'; t.assignedAt = Date.now(); t.loveNote = str(fd.get('note'), 100); t.later = false; t.doneBy = null;
+          logChange('task.give', 'Gave ' + q(t.title) + ' to ' + name + (t.loveNote ? ' (' + t.loveNote + ')' : ''));
+          save(); renderUser();
+          toast('Given to ' + name + ' 💗', function () { takeBack(t, true); });
+        }
+      });
+    }
+    function loveDone(t) {
+      t.status = 'done'; t.doneBy = 'love'; t.runningSince = null;
+      logChange('task.love-done', (iAmLove() ? loveName() + ' did ' : 'Marked ' + loveName() + ' as done with ') + q(t.title));
+      save(); renderUser(); if (ui.view === 'admin') renderAdmin();
+      toast(iAmLove() ? 'Thank you 💗' : 'Marked done by ' + loveName() + '.', function () { loveReopen(t); });
+    }
+    function loveReopen(t) {
+      t.status = hasProgress(t) ? 'partial' : 'active'; t.doneBy = null;
+      logChange('task.love-reopen', 'Reopened ' + q(t.title) + ' (with ' + loveName() + ')');
+      save(); renderUser(); if (ui.view === 'admin') renderAdmin();
+    }
+    function takeBack(t, viaUndo) {
+      var wasDone = t.status === 'done';
+      t.assignee = null; t.assignedAt = 0; t.loveNote = ''; t.doneBy = null;
+      if (wasDone) t.status = hasProgress(t) ? 'partial' : 'active';
+      logChange('task.take-back', (iAmLove() ? loveName() + ' handed back ' : 'Took back ') + q(t.title));
+      save(); renderUser(); if (ui.view === 'admin') renderAdmin();
+      toast(viaUndo ? 'Undone.' : (iAmLove() ? 'Handed back.' : 'Back on your list.'));
+    }
+
     function renderRadar() {
       var cats = state.categories;
       var n = cats.length;
       // Series A: progress today per category (avg % across that category's tasks).
       var prog = cats.map(function (c) {
-        var ts = state.tasks.filter(function (t) { return t.category === c && t.status !== 'skipped'; });
+        var ts = state.tasks.filter(function (t) { return t.category === c && t.status !== 'skipped' && !t.assignee; });
         if (!ts.length) return 0;
         return ts.reduce(function (a, t) { return a + progressPct(t); }, 0) / ts.length;
       });
@@ -1658,8 +1751,9 @@
     }
     // One benefit of a task still open today, picked from a different task than last time when possible.
     function drawTaskWhy() {
-      var pool = state.tasks.filter(function (t) { return t.status !== 'done' && whysFor(t).length; });
-      if (!pool.length) pool = state.tasks.filter(function (t) { return whysFor(t).length; });
+      var mine = state.tasks.filter(function (t) { return !t.assignee; });
+      var pool = mine.filter(function (t) { return t.status !== 'done' && whysFor(t).length; });
+      if (!pool.length) pool = mine.filter(function (t) { return whysFor(t).length; });
       if (pool.length > 1) pool = pool.filter(function (t) { return t.id !== state.why.taskId; });
       if (!pool.length) { state.why.taskId = null; state.why.taskText = ''; return; }
       var t = pool[Math.floor(Math.random() * pool.length)];
@@ -1694,6 +1788,7 @@
     // ---------- User actions ----------
     $('btn-online').addEventListener('click', function () { ui.context = 'online'; renderTasks(); });
     $('btn-offline').addEventListener('click', function () { ui.context = 'offline'; renderTasks(); });
+    $('btn-love').addEventListener('click', function () { ui.context = 'love'; renderTasks(); });
 
     $('user-view').addEventListener('change', function (e) {
       var el = e.target;
@@ -1722,7 +1817,7 @@
       if (action === 'why-more') { newBenefits(); renderWhy(); return; }
       if (action === 'why-goto' && t) {
         // Jump to that task: switch to its mode and scroll it into view.
-        ui.context = t.context;
+        ui.context = t.assignee ? 'love' : t.context;
         if (t.status === 'done') ui.completedOpen = true;
         renderTasks();
         var card = document.querySelector('[data-card="' + t.id.replace(/"/g, '') + '"]');
@@ -1735,6 +1830,10 @@
       if (action === 'pause') return openPause(t);
       if (action === 'part') return openPartDone(t);
       if (action === 'later') return openLater(t);
+      if (action === 'give-love') return openGiveLove(t);
+      if (action === 'love-done') return loveDone(t);
+      if (action === 'love-reopen') return loveReopen(t);
+      if (action === 'love-back') return takeBack(t);
       if (action === 'complete') return quickComplete(t);
       if (action === 'reopen') return reopenTask(t);
       if (action === 'unskip') return unskip(t);
@@ -2109,12 +2208,24 @@
     }
 
     function adminTodayHtml() {
-      var h = '<div class="card"><h3>Today · ' + DAY_NAMES[todayDayId()] + ' ' + esc(dateKey()) + '</h3>';
+      var given = state.tasks.filter(function (t) { return t.assignee; });
+      var h = '';
+      if (given.length) {
+        var gOpen = given.filter(function (t) { return t.status !== 'done'; });
+        h += '<div class="card"><h3>💗 Given to ' + (iAmLove() ? 'you' : esc(loveName())) + ' · ' + (given.length - gOpen.length) + '/' + given.length + ' done</h3>';
+        given.forEach(function (t) {
+          var dn = t.status === 'done';
+          h += '<div class="list-row"><div class="grow"><div class="title">' + (dn ? '✓ ' : '') + esc(t.title) + '</div><div class="sub">' + esc(t.category) + ' · ~' + t.est + 'm' + (t.loveNote ? ' · “' + esc(t.loveNote) + '”' : '') + (dn ? ' · done' : '') + '</div></div>' +
+               (dn ? '' : '<button class="btn btn-primary" type="button" data-action="love-done" data-id="' + esc(t.id) + '">✓ Done</button>') + '</div>';
+        });
+        h += '</div>';
+      }
+      h += '<div class="card"><h3>Today · ' + DAY_NAMES[todayDayId()] + ' ' + esc(dateKey()) + '</h3>';
       if (!state.tasks.length) h += '<p class="muted">Nothing on today\'s list.</p>';
       state.tasks.forEach(function (t) {
         var c = subCounts(t);
         h += '<div class="list-row"><div class="grow"><div class="title"><span class="dot ' + t.context + '"></span>' + esc(t.title) + '</div>' +
-             '<div class="sub">' + esc(t.category) + ' · ' + t.timeSpent + '/' + t.est + 'm · ' + progressPct(t) + '% · ' + (c.total ? c.done + '/' + c.total + ' steps · ' : '') + t.status + (t.carried ? ' (carried)' : '') + (t.templateId ? ' · routine' : ' · one-off') + '</div></div>' +
+             '<div class="sub">' + esc(t.category) + ' · ' + t.timeSpent + '/' + t.est + 'm · ' + progressPct(t) + '% · ' + (c.total ? c.done + '/' + c.total + ' steps · ' : '') + t.status + (t.assignee ? ' · 💗 with ' + esc(loveName()) : '') + (t.carried ? ' (carried)' : '') + (t.templateId ? ' · routine' : ' · one-off') + '</div></div>' +
              '<button class="btn btn-secondary" type="button" data-action="edit-task" data-id="' + esc(t.id) + '">Edit</button>' +
              '<button class="btn-icon" type="button" aria-label="Remove task" data-action="del-task" data-id="' + esc(t.id) + '">🗑</button></div>';
       });
@@ -2325,6 +2436,7 @@
     function adminSettingsHtml() {
       return '<div class="card"><h3>Behaviour</h3>' +
         '<div class="setting-row"><div><div style="font-weight: 600; font-size: 0.9rem;">Carry over partial work</div><div class="muted small">Unfinished tasks with progress roll into the next day.</div></div><input class="switch" type="checkbox" data-action="carry"' + (state.settings.carryOver ? ' checked' : '') + ' aria-label="Carry over partial work"></div>' +
+        '<div class="setting-row"><div><div style="font-weight: 600; font-size: 0.9rem;">Name on the 💗 tab</div><div class="muted small">Who tasks are handed to: ' + esc(loveName()) + '</div></div><button class="btn btn-secondary" type="button" data-action="edit-love-name">Edit</button></div>' +
         '<div class="setting-row"><div><div style="font-weight: 600; font-size: 0.9rem;">Labels</div><div class="muted small">' + state.categories.map(esc).join(' · ') + '</div></div><button class="btn btn-secondary" type="button" data-action="edit-cats">Edit</button></div>' +
         (syncOn() ? '' : '<div class="setting-row"><div><div style="font-weight: 600; font-size: 0.9rem;">Admin PIN</div><div class="muted small">' + (state.pin === '1234' ? 'Still the default (1234).' : 'Custom PIN set.') + ' A soft lock for focus, not real security.</div></div><button class="btn btn-secondary" type="button" data-action="change-pin">Change</button></div>') +
         '</div>' +
@@ -2377,7 +2489,17 @@
         case 'exit-admin': switchView('user'); break;
         case 'new-task': openTaskEditor(null); break;
         case 'edit-task': openTaskEditor(findTask(id)); break;
+        case 'edit-love-name': openModal({
+          title: 'Name on the 💗 tab',
+          body: '<label>Name<input name="name" maxlength="20" value="' + esc(loveName()) + '" autocomplete="off"></label>',
+          confirmText: 'Save',
+          onConfirm: function (fd) {
+            var nm = str(fd.get('name'), 20); if (!nm) return 'Enter a name.';
+            logChange('setting', 'Renamed the 💗 tab to ' + q(nm)); state.settings.loveName = nm; save(); renderAdmin(); renderUser(); toast('Saved.');
+          }
+        }); break;
         case 'del-task': { var dt = findTask(id); if (dt) deleteTaskConfirm(dt); break; }
+        case 'love-done': { var lt = findTask(id); if (lt) { loveDone(lt); renderAdmin(); } break; }
         case 'reseed': {
           var n = seedToday(); save(); renderAdmin();
           if (n) logChange('task.add', 'Pulled ' + n + ' missing routine item' + (n > 1 ? 's' : '') + ' into today');

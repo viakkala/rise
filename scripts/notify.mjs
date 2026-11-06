@@ -92,7 +92,7 @@ export function todaysList(all, today, dayId) {
   let tasks = pick(all, 'tasks').map((x) => x.v);
   if (meta.lastSeedDate !== today) {
     const held = pick(all, 'held').map((x) => x.v);
-    tasks = tasks.filter((t) => t.status !== 'done' && t.status !== 'skipped' && (t.kind === 'weekend' || (carryOver && hasProgress(t))))
+    tasks = tasks.filter((t) => t.status !== 'done' && t.status !== 'skipped' && (t.assignee || t.kind === 'weekend' || (carryOver && hasProgress(t))))
       .map((t) => ({ ...t, carried: true }))
       .concat(held.map((t) => ({ ...t, carried: true })))
       .filter((t) => !awayBlocks(t.category, plan));
@@ -114,6 +114,8 @@ export function todaysList(all, today, dayId) {
       tasks.push(t);
     }
   }
+  // Tasks handed to Love are Love's, not the user's: leave them out of the user's reminders.
+  tasks = tasks.filter((t) => !t.assignee);
   return { open: tasks.filter((t) => t.status !== 'done' && t.status !== 'skipped'), all: tasks, away: !!(plan && plan.away) };
 }
 
