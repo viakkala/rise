@@ -1,6 +1,6 @@
 // Rise service worker: offline app shell.
 // Bump CACHE when you change index.html so installed copies pick up the update.
-const CACHE = 'rise-v10';
+const CACHE = 'rise-v11';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './badge-96.png'];
 
 self.addEventListener('install', (event) => {

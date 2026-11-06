@@ -278,6 +278,8 @@
     .pick-btn .ico { font-size: 1.2rem; width: 24px; text-align: center; }
     .pick-btn small { display: block; font-weight: 400; color: var(--text-muted); font-size: 0.75rem; margin-top: 2px; }
     .pick-row { display: flex; gap: 8px; }
+    .pick-wrap { flex-wrap: wrap; }
+    .pick-wrap .pick-btn { flex: 1 1 40%; }
     .pick-row .pick-btn { flex-direction: column; gap: 2px; text-align: center; padding: 14px 6px; }
     .badge-later { background: rgba(148,163,184,0.18); color: #cbd5e1; }
     .hidden { display: none !important; }
@@ -1805,8 +1807,33 @@
     function quickComplete(t) {
       if (t.kind === 'plan') return openPlanDone(t);
       if (t.kind === 'weekend') return openWeekendDone(t);
-      markDone(t, autoMins(t));
-      toast((t.category === ME_TIME ? 'Me Time logged 💗' : 'Done 🎉'), function () { reopenTask(t); });
+      openDoneTime(t);
+    }
+    // ✓ Done asks one quick question: roughly how long it took, compared with the estimate. One tap finishes.
+    // Real times keep the daily list realistic: the admin sees which estimates are off in Analytics.
+    function timeChoices(est) {
+      var r = function (x) { return est >= 20 ? Math.max(5, Math.round(x / 5) * 5) : Math.max(1, Math.round(x)); };
+      var out = [], seen = {};
+      [[0.5, 'Quicker'], [1, 'About right'], [1.5, 'Longer'], [2, 'Much longer']].forEach(function (c) {
+        var m = r(est * c[0]); if (seen[m]) return; seen[m] = true; out.push([m, c[1]]);
+      });
+      return out;
+    }
+    function openDoneTime(t) {
+      var picks = timeChoices(t.est).map(function (c) {
+        return '<button type="button" class="pick-btn" data-pick="' + c[0] + '"' + (c[1] === 'About right' ? ' style="border-color: var(--accent-offline);"' : '') + '>' + c[1] + '<small>~' + fmtMins(c[0]) + '</small></button>';
+      }).join('');
+      openModal({
+        title: 'Done 🎉 How long did it take?',
+        body: '<p class="modal-msg">' + esc(t.title) + (t.timeSpent > 0 ? '<br><span class="muted">In total, including earlier parts.</span>' : '') + '</p>' +
+              '<div class="pick-row pick-wrap">' + picks + '</div>',
+        confirmText: 'Close', confirmClass: 'btn-secondary hidden', cancelText: 'Cancel', noFocus: true,
+        onPick: function (v) {
+          var total = clampInt(v, 1, 600, t.est);
+          markDone(t, t.runningSince ? Math.max(1, runningMins(t)) : Math.max(0, total - t.timeSpent));
+          toast((t.category === ME_TIME ? 'Me Time logged 💗' : 'Done 🎉'), function () { reopenTask(t); });
+        }
+      });
     }
     // Time isn't tracked by hand any more: a task counts as its estimate (less anything already credited).
     function autoMins(t) { return t.runningSince ? Math.max(1, runningMins(t)) : Math.max(0, t.est - t.timeSpent); }
