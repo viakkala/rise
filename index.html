@@ -83,9 +83,9 @@
     .btn-context.active[data-context="offline"] { background: var(--accent-offline); color: #fff; border-color: var(--accent-offline); }
     .btn-context.active[data-context="love"] { background: #db2777; color: #fff; border-color: #db2777; }
     .btn-context { white-space: nowrap; padding: 10px 6px; }
-    .task-actions:has(.btn-love) { flex-wrap: nowrap; }
-    .task-actions:has(.btn-love) .btn-action { min-width: 0; }
-    .btn-action.btn-love { flex: 0 0 44px !important; min-width: 44px; padding-left: 0; padding-right: 0; background: transparent; border: 1px solid #db2777; color: #f9a8d4; }
+    .btn-sub { display: block; font-size: 0.65rem; font-weight: 500; opacity: 0.85; margin-top: 1px; }
+    .pick-head { font-weight: 600; font-size: 0.9rem; margin: 0 0 8px; }
+    .btn-action.btn-love { background: transparent; border: 1px solid #db2777; color: #f9a8d4; }
     .badge-love { background: rgba(219,39,119,0.2); color: #f9a8d4; }
     .love-note { font-size: 0.8rem; color: #f9a8d4; margin: -2px 0 8px; }
     .task-item.love { border-left: 3px solid #db2777; }
@@ -1558,11 +1558,10 @@
       } else {
         // Do it whenever, then say so: Done, Part done, or Later. No start button needed.
         h += t.kind === 'normal'
-          ? '<button class="btn-action btn-done" type="button" data-action="complete" data-task="' + id + '">✓ Done</button>' +
-            '<button class="btn-action btn-part" type="button" data-action="part" data-task="' + id + '">Part done</button>'
+          ? '<button class="btn-action btn-done" type="button" data-action="complete" data-task="' + id + '">✓ Done<span class="btn-sub">or partly</span></button>'
           : '<button class="btn-action btn-plan" type="button" data-action="complete" data-task="' + id + '">Plan it</button>';
         h += '<button class="btn-action btn-later" type="button" data-action="later" data-task="' + id + '">Later</button>';
-        h += '<button class="btn-action btn-love" type="button" data-action="give-love" data-task="' + id + '" aria-label="Give to ' + esc(loveName()) + '" title="Give to ' + esc(loveName()) + '">💗</button>';
+        h += '<button class="btn-action btn-love" type="button" data-action="give-love" data-task="' + id + '" title="Give to ' + esc(loveName()) + '">💗 ' + esc(loveName()) + '</button>';
       }
       h += '</div></div>';
       return h;
@@ -1828,7 +1827,6 @@
       if (action === 'timer') return toggleTimer(t);
       if (action === 'steps') { ui.openSteps[t.id] = !ui.openSteps[t.id]; renderTasks(); return; }
       if (action === 'pause') return openPause(t);
-      if (action === 'part') return openPartDone(t);
       if (action === 'later') return openLater(t);
       if (action === 'give-love') return openGiveLove(t);
       if (action === 'love-done') return loveDone(t);
@@ -1919,16 +1917,24 @@
       return out;
     }
     function openDoneTime(t) {
-      var picks = timeChoices(t.est).map(function (c) {
-        return '<button type="button" class="pick-btn" data-pick="' + c[0] + '"' + (c[1] === 'About right' ? ' style="border-color: var(--accent-offline);"' : '') + '>' + c[1] + '<small>~' + fmtMins(c[0]) + '</small></button>';
+      var cur = progressPct(t);
+      var timePicks = timeChoices(t.est).map(function (c) {
+        return '<button type="button" class="pick-btn" data-pick="t' + c[0] + '"' + (c[1] === 'About right' ? ' style="border-color: var(--accent-offline);"' : '') + '>' + c[1] + '<small>~' + fmtMins(c[0]) + '</small></button>';
+      }).join('');
+      var partPicks = PROGRESS_CHOICES.filter(function (ch) { return ch[0] > cur; }).map(function (ch) {
+        return '<button type="button" class="pick-btn" data-pick="p' + ch[0] + '">' + ch[1] + '<small>' + ch[2] + '</small></button>';
       }).join('');
       openModal({
-        title: 'Done 🎉 How long did it take?',
-        body: '<p class="modal-msg">' + esc(t.title) + (t.timeSpent > 0 ? '<br><span class="muted">In total, including earlier parts.</span>' : '') + '</p>' +
-              '<div class="pick-row pick-wrap">' + picks + '</div>',
+        title: esc(t.title),
+        body: '<p class="pick-head">✅ Finished. How long did it take?' + (t.timeSpent > 0 ? ' <span class="muted">(in total)</span>' : '') + '</p>' +
+              '<div class="pick-row pick-wrap">' + timePicks + '</div>' +
+              (partPicks ? '<p class="pick-head" style="margin-top: 16px;">⏳ Not finished yet. How far did you get?</p>' +
+              '<div class="pick-row">' + partPicks + '</div>' +
+              '<p class="muted small" style="margin-top: 6px;">Every bit counts. The rest stays on the list' + (state.settings.carryOver ? ' and carries to tomorrow' : '') + '.</p>' : ''),
         confirmText: 'Close', confirmClass: 'btn-secondary hidden', cancelText: 'Cancel', noFocus: true,
         onPick: function (v) {
-          var total = clampInt(v, 1, 600, t.est);
+          if (v.charAt(0) === 'p') return savePart(t, clampInt(v.slice(1), 0, 100, 25));
+          var total = clampInt(v.slice(1), 1, 600, t.est);
           markDone(t, t.runningSince ? Math.max(1, runningMins(t)) : Math.max(0, total - t.timeSpent));
           toast((t.category === ME_TIME ? 'Me Time logged 💗' : 'Done 🎉'), function () { reopenTask(t); });
         }
@@ -1937,35 +1943,22 @@
     // Time isn't tracked by hand any more: a task counts as its estimate (less anything already credited).
     function autoMins(t) { return t.runningSince ? Math.max(1, runningMins(t)) : Math.max(0, t.est - t.timeSpent); }
 
-    // ◐ Part done: one tap on how far you got. Partial progress counts and carries to tomorrow.
-    function openPartDone(t) {
-      var cur = progressPct(t);
-      var picks = PROGRESS_CHOICES.map(function (ch) {
-        return '<button type="button" class="pick-btn" data-pick="' + ch[0] + '"' + (ch[0] <= cur ? ' disabled style="opacity:.4"' : '') + '>' + ch[1] + '<small>' + ch[2] + '</small></button>';
-      }).join('');
-      openModal({
-        title: 'How much is done?',
-        body: '<p class="modal-msg">' + esc(t.title) + '<br><span class="muted">Every bit counts. The rest stays on the list' + (state.settings.carryOver ? ' and carries to tomorrow' : '') + '.</span></p>' +
-              '<div class="pick-row">' + picks + '</div>',
-        confirmText: 'Close', confirmClass: 'btn-secondary hidden', cancelText: 'Cancel', noFocus: true,
-        onPick: function (v) {
-          var next = clampInt(v, 0, 100, 25);
-          var before = progressPct(t);
-          var mins = t.runningSince ? Math.max(1, runningMins(t)) : Math.max(0, Math.round(t.est * (next - before) / 100));
-          var prev = { progress: t.progress, timeSpent: t.timeSpent, status: t.status, later: t.later };
-          t.runningSince = null;
-          t.timeSpent += mins;
-          t.progress = Math.max(t.progress || 0, next);
-          t.status = 'partial';
-          t.later = false;
-          var entry = addLog(t, 'partial', mins, '');
-          save(); renderUser();
-          toast('Saved at ' + progressPct(t) + '%. Well done.', function () {
-            t.progress = prev.progress; t.timeSpent = prev.timeSpent; t.status = prev.status; t.later = prev.later;
-            state.log = state.log.filter(function (e) { return e.id !== entry.id; });
-            save(); renderUser();
-          });
-        }
+    // Partly done: progress counts and carries to tomorrow.
+    function savePart(t, next) {
+      var before = progressPct(t);
+      var mins = t.runningSince ? Math.max(1, runningMins(t)) : Math.max(0, Math.round(t.est * (next - before) / 100));
+      var prev = { progress: t.progress, timeSpent: t.timeSpent, status: t.status, later: t.later };
+      t.runningSince = null;
+      t.timeSpent += mins;
+      t.progress = Math.max(t.progress || 0, next);
+      t.status = 'partial';
+      t.later = false;
+      var entry = addLog(t, 'partial', mins, '');
+      save(); renderUser();
+      toast('Saved at ' + progressPct(t) + '%. Well done.', function () {
+        t.progress = prev.progress; t.timeSpent = prev.timeSpent; t.status = prev.status; t.later = prev.later;
+        state.log = state.log.filter(function (e) { return e.id !== entry.id; });
+        save(); renderUser();
       });
     }
 
