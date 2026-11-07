@@ -104,7 +104,7 @@ export function todaysList(all, today, dayId) {
       tasks.push({ title: tp.title, category: tp.category, kind: tp.kind || 'normal', status: 'active', templateId: tp.id, subtasks: [] });
     }
     for (const { v: sc } of pick(all, 'sched')) {
-      if (sc.date !== today || !sc.task || awayBlocks(sc.task.category, plan)) continue;
+      if (sc.date !== today || !sc.task || (awayBlocks(sc.task.category, plan) && !sc.task.extra)) continue;
       const t = sc.task;
       if (t.replaces) {
         const i = tasks.findIndex((o) => o.title.toLowerCase() === t.replaces.toLowerCase() && !hasProgress(o));

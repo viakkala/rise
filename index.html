@@ -644,6 +644,7 @@
         loveNote: t.assignee === 'love' && t.loveNote ? str(String(t.loveNote), 100) : '',
         doneBy: t.doneBy === 'love' ? 'love' : null,
         replaces: t.replaces ? str(t.replaces, 80) : null,
+        extra: !!t.extra,
         createdIds: Array.isArray(t.createdIds) ? t.createdIds.map(String).slice(0, 40) : [],
         restore: t.restore && typeof t.restore === 'object' && str(t.restore.title) ? {
           templateId: t.restore.templateId ? String(t.restore.templateId) : null, title: str(t.restore.title, 80),
@@ -1274,7 +1275,8 @@
         if (sc.date > today) keep.push(sc);
         else if (sc.date === today) {
           // A plan made earlier for a day that is now away, or whose routine item was dropped, isn't added.
-          if (awayBlocks(sc.task.category, plan) || (sc.task.replaces && skippedTitles.indexOf(sc.task.replaces.toLowerCase()) >= 0)) return;
+          // Tasks the admin added for that exact day always stay, even while away.
+          if ((awayBlocks(sc.task.category, plan) && !sc.task.extra) || (sc.task.replaces && skippedTitles.indexOf(sc.task.replaces.toLowerCase()) >= 0)) return;
           placeTask(sc.task); n++;
         }
         // Plans for a day that already passed are dropped.
@@ -2358,7 +2360,18 @@
              '<div class="grow"><div class="title">' + esc(tp.title) + '</div><div class="sub">' + esc(tp.category) + ' · ' + tp.est + 'm' + (off && awayBlocks(tp.category, plan) && plan.skip.indexOf(tp.id) < 0 ? ' · paused while away' : '') + '</div></div></label>';
       });
       if (items.length) h += '<p class="muted small" style="margin-top: 8px;">' + on + ' of ' + items.length + ' routine items on this day.</p>';
-      h += '<div class="btn-row" style="margin-top: 12px;"><button class="btn btn-secondary" type="button" data-action="plan-help">🤝 Help at home</button>' +
+      // Extra one-off tasks for this date (also on away days).
+      var extras = d === today
+        ? state.tasks.filter(function (t) { return t.extra; }).map(function (t) { return { id: t.id, task: t, today: true }; })
+        : state.scheduled.filter(function (sc) { return sc.date === d && sc.task.extra; });
+      h += '<h3 style="font-size: 0.95rem; margin-top: 16px;">Extra tasks on this day</h3>';
+      if (!extras.length) h += '<p class="muted small">None yet. Add one-offs here, like packing or a family outing.</p>';
+      extras.forEach(function (x) {
+        h += '<div class="list-row"><div class="grow"><div class="title">' + esc(x.task.title) + '</div><div class="sub">' + esc(x.task.category) + ' · ' + x.task.est + 'm · ' + (x.task.context === 'online' ? 'Online' : 'Offline') + (x.today && x.task.status === 'done' ? ' · done' : '') + '</div></div>' +
+             '<button class="btn-icon" type="button" aria-label="Remove" data-action="' + (x.today ? 'del-task' : 'del-sched') + '" data-id="' + esc(x.id) + '">🗑</button></div>';
+      });
+      h += '<div class="btn-row" style="margin-top: 12px;"><button class="btn btn-primary" type="button" data-action="plan-add">+ Add a task for this day</button></div>';
+      h += '<div class="btn-row" style="margin-top: 8px;"><button class="btn btn-secondary" type="button" data-action="plan-help">🤝 Help at home</button>' +
            (plan ? '<button class="btn btn-secondary" type="button" data-action="plan-reset">Back to normal</button>' : '') + '</div></div>';
 
       // Away periods
@@ -2378,6 +2391,37 @@
       });
       h += '<div class="btn-row" style="margin-top: 12px;"><button class="btn btn-primary" type="button" data-action="away-new">+ Set away dates</button></div></div>';
       return h;
+    }
+    // Add a one-off task to a chosen date (or several), e.g. for each day of a trip.
+    function openDayTaskEditor(date) {
+      var today = dateKey(), days = '';
+      for (var i = 0; i < 14; i++) {
+        var dd = addDays(today, i), pl = planFor(dd);
+        days += '<label><input type="checkbox" name="day" value="' + dd + '"' + (dd === date ? ' checked' : '') + '>' +
+                esc(i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : shortDate(dd)) + (pl && pl.away ? ' ✈' : '') + '</label>';
+      }
+      openModal({
+        title: 'Add a task for ' + esc(date === today ? 'today' : prettyDate(date)),
+        body: taskFormBody(null, false, false) +
+              '<div style="font-size: 0.8rem; color: var(--text-muted); margin: 4px 0 6px;">On these days</div><div class="check-grid" style="grid-template-columns: repeat(2, 1fr);">' + days + '</div>' +
+              '<p class="muted small">It shows up on the user\'s list that morning, even on away days.</p>',
+        confirmText: 'Add task',
+        onConfirm: function (fd) {
+          var v = readTaskForm(fd);
+          if (typeof v === 'string') return v;
+          var picked = fd.getAll('day').filter(function (x) { return /^\d{4}-\d{2}-\d{2}$/.test(x) && x >= today; }).sort();
+          if (!picked.length) return 'Pick at least one day.';
+          applyNewLabel(v);
+          picked.forEach(function (dd) {
+            var nt = blankTask({ title: v.title, context: v.context, category: v.category, est: v.est, subtasks: v.subtasks, whys: v.whys || [] });
+            nt.extra = true; nt.date = dd;
+            scheduleTask(nt, dd);
+          });
+          logChange('plan.add', 'Added ' + q(v.title) + ' for ' + picked.map(function (dd) { return shortDate(dd); }).join(', '));
+          save(); renderAdmin(); renderUser();
+          toast(picked.length > 1 ? 'Added to ' + picked.length + ' days.' : 'Added.');
+        }
+      });
     }
     function openAwayEditor() {
       var today = dateKey(), from = ui.planDate || addDays(today, 1);
@@ -2517,6 +2561,7 @@
           toast(dropped ? 'Dropped ' + dropped + ' Home task' + (dropped > 1 ? 's' : '') + '. Re-tick any you still want.' : 'No Home tasks on this day.');
           break;
         }
+        case 'plan-add': openDayTaskEditor(ui.planDate); break;
         case 'plan-reset': {
           var rd = ui.planDate; delete state.dayPlans[rd];
           logChange('plan.reset', 'Set ' + shortDate(rd) + ' back to the normal routine');
