@@ -277,6 +277,9 @@
       opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; z-index: 2000; max-width: calc(100% - 32px); text-align: center;
     }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+    .demo-banner { display: none; background: #4c1d95; color: #ede9fe; font-size: 0.8rem; text-align: center; border-radius: 0; margin: 0; padding: 6px 12px; }
+    body.demo .demo-banner { display: block; }
+    .demo-banner button, .demo-banner a { background: none; border: none; color: #fff; text-decoration: underline; font: inherit; padding: 0; }
     .toast-undo { background: none; border: none; color: #2563eb; font-weight: 700; font-size: 0.85rem; margin-left: 10px; padding: 0 2px; }
     .btn-part { background: transparent; border: 1px solid var(--accent-warn); color: #fcd34d; }
     .btn-later { background: transparent; border: 1px solid var(--border); color: var(--text-soft); }
@@ -294,6 +297,7 @@
   </style>
 </head>
 <body>
+  <div class="banner demo-banner" id="demo-banner">Demo · sample household, nothing is synced · <button type="button" id="demo-reset">Reset demo</button> · <a href="./index.html">Leave demo</a></div>
 
   <header>
     <div class="brand"><img src="icon-192.png" alt="" width="26" height="26" style="vertical-align: -7px; border-radius: 7px; margin-right: 8px;">Rise<span class="sync-dot hidden" id="sync-dot" title="Sync"></span></div>
@@ -392,7 +396,10 @@
     'use strict';
 
     // ---------- Constants & helpers ----------
-    var STORAGE_KEY = 'focusPwa.state.v1';
+    // Demo mode (index.html?demo): loads sample-data/demo.json into separate storage, with no sign-in and no cloud sync.
+    // It never touches the real data kept on a phone.
+    var DEMO = /[?&]demo(=|&|$)/.test(location.search);
+    var STORAGE_KEY = DEMO ? 'rise.demo.state' : 'focusPwa.state.v1';
     var ME_TIME = 'Me Time';
     var WEEK = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
     var JS_DAY = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -779,7 +786,7 @@
     var state = loadState();
 
     // ---------- Change history: who added/edited/deleted what. Kept in its own storage key, separate from the app data. ----------
-    var AUDIT_KEY = 'focusPwa.changes.v1';
+    var AUDIT_KEY = DEMO ? 'rise.demo.changes' : 'focusPwa.changes.v1';
     var MAX_AUDIT = 1000;
     function loadAudit() {
       try {
@@ -815,7 +822,7 @@
     var FS_URL = 'https://firestore.googleapis.com/v1/';
     function lsGet(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
     function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
-    var session = lsGet(SESSION_KEY);
+    var session = DEMO ? null : lsGet(SESSION_KEY);
     var syncMeta = lsGet(SYNC_KEY) || { since: null, synced: {}, lastOk: 0 };
     if (!syncMeta.synced) syncMeta.synced = {};
     var syncState = { status: 'idle', running: false, again: false, timer: null, error: '' };
@@ -2877,7 +2884,56 @@
       reader.readAsText(f);
     });
 
+    // ---------- Demo data ----------
+    // demo.json was recorded on its "anchor" date; every date and timestamp is shifted so the anchor becomes today.
+    function shiftDemo(data) {
+      var p = data.anchor.split('-'), anchor = new Date(+p[0], +p[1] - 1, +p[2]), now = new Date();
+      var days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()) - anchor) / 86400000);
+      var text = JSON.stringify({ state: data.state, changes: data.changes })
+        .replace(/\b(20\d\d)-(\d\d)-(\d\d)\b/g, function (m) { return addDays(m, days); })
+        .replace(/\bs(20\d\d)(\d\d)(\d\d)_/g, function (m, y, mo, d) { return 's' + addDays(y + '-' + mo + '-' + d, days).replace(/-/g, '') + '_'; });
+      var out = JSON.parse(text), ms = days * 86400000;
+      // Change-history text names dates in words (recorded in en-US); rewrite those too.
+      var words = [];
+      for (var i = -40; i <= 40; i++) {
+        var from = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + i), to = addDays(dateKey(from), days);
+        words.push([from.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'short' }), prettyDate(to)]);
+        words.push([from.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' }), shortDate(to)]);
+      }
+      words.sort(function (x, y) { return y[0].length - x[0].length; }); // "Sun, Nov 15" before "Sun, Nov 1"
+      (out.changes.entries || []).forEach(function (e) {
+        words.forEach(function (w, n) { if (e.summary.indexOf(w[0]) >= 0) { e.summary = e.summary.split(w[0]).join('\u0000' + n + '\u0000'); } });
+        e.summary = e.summary.replace(/\u0000(\d+)\u0000/g, function (m, n) { return words[+n][1]; });
+      });
+      (function walk(o) {
+        if (!o || typeof o !== 'object') return;
+        Object.keys(o).forEach(function (k) {
+          if (typeof o[k] === 'number' && o[k] > 1.5e12 && o[k] < 2.5e12) o[k] += ms;
+          else walk(o[k]);
+        });
+      })(out);
+      return out;
+    }
+    function startDemo() {
+      document.body.classList.add('demo');
+      $('demo-reset').addEventListener('click', function () {
+        try { localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(AUDIT_KEY); } catch (e) {}
+        location.reload();
+      });
+      var have = false;
+      try { have = !!localStorage.getItem(STORAGE_KEY); } catch (e) {}
+      if (have) return false;
+      fetch('sample-data/demo.json', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (data) {
+        var d = shiftDemo(data);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(d.state));
+        localStorage.setItem(AUDIT_KEY, JSON.stringify(d.changes));
+        location.reload();
+      }).catch(function () { toast('Couldn\'t load the demo data.'); });
+      return true;
+    }
+
     // ---------- Boot ----------
+    if (DEMO && startDemo()) return;
     // Synced phones roll the day over after pulling the latest data (inside sync), so they never clobber the other phone's progress.
     if (!syncOn()) rollover();
     newBenefits(); // new reason(s) every time the app is opened
@@ -2885,7 +2941,7 @@
     renderUser();
     applyRoleUi();
     if (syncOn()) sync();
-    else if (lsGet(MODE_KEY) !== 'local') showLogin();
+    else if (lsGet(MODE_KEY) !== 'local' && !DEMO) showLogin();
     window.addEventListener('online', function () { scheduleSync(300); });
     setInterval(function () { if (document.visibilityState === 'visible') { sync(); setSyncStatus(syncState.status); } }, 60000);
 
